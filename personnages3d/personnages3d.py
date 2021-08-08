@@ -13,6 +13,8 @@ Envoi de toutes les coordonnées de tous les points en OSC.
 import os
 from time import time, sleep
 import enum
+import json
+from datetime import datetime
 
 import numpy as np
 import cv2
@@ -97,13 +99,13 @@ class Personnage:
         self.who = None
         self.xys = None
         self.points_3D = None
-        self.center = [0.0]*3
-        # 30x et 30y et 30z
+        self.center = [1000]*3
+        # 10x et 10y et 10z soit 1 seconde
         self.historic = [0]*3
-        self.historic[0] = [0]*30
-        self.historic[1] = [0]*30
-        self.historic[2] = [0]*30
-        self.moving_center = [0]*3
+        self.historic[0] = [0]*10
+        self.historic[1] = [0]*10
+        self.historic[2] = [0]*10
+        self.moving_center = [1000]*3
         self.dist = 0
 
     def add_historic(self, centre):
@@ -116,19 +118,21 @@ class Personnage:
         self.EMA_update()
 
     def EMA_update(self):
+        """Le centre est vu du dessus, pas de verticale=y"""
+
         for j in range(3):
-            # #print(self.historic[j])
-            self.moving_center[j] = moving_average(self.historic[j], 28,
+            self.moving_center[j] = moving_average(self.historic[j], 4,
                                     type='simple')  # 'exponentiel' ou 'simple'
 
 
 class Personnages3D:
     """ Capture avec  Camera RealSense D455
-        Détection de la pose avec Coral USB Stick ou CPU (TODO)
+        Détection de la pose avec Coral USB Stick
         Calcul des coordonnées 3D de chaque personnage et envoi en OSC.
         La profondeur est le 3ème dans les coordonnées d'un point 3D,
         x = horizontale, y = verticale
     """
+    # TODO Calcul sur cpu ?
 
     def __init__(self):
         """Les paramètres sont à définir dans le fichier personnages3d.ini
@@ -167,12 +171,19 @@ class Personnages3D:
         self.this_posenet = ThisPosenet(self.width, self.height)
 
         # Toutes les datas des personnages dans un dict self.personnages
-        self.nombre_de_personnage = int(self.config['pose']['nombre_de_personnage'])
+        self.person_nbr = min(int(self.config['pose']['person_nbr']), 4)
         self.personnages = []
-        for i in range(self.nombre_de_personnage):
+        for i in range(self.person_nbr):
             self.personnages.append(Personnage())
         self.skelet_nbr = 0
-        self.centers = None
+        self.new_centers = None
+        self.all_persos_3D = []
+        self.personnages_window()
+
+    def personnages_window(self):
+        self.black = np.zeros((720, 1280, 3), dtype = "uint8")
+        cv2.namedWindow('position', cv2.WINDOW_AUTOSIZE)
+        cv2.line(self.black, (0, 360), (1280, 360), (255, 255, 255), 2)
 
     def create_trackbar(self):
         """trackbar = slider
@@ -242,7 +253,7 @@ class Personnages3D:
         print(f"Taille des images:"
               f"     {img.shape[1]}x{img.shape[0]}")
 
-    def get_personnages(self, outputs):
+    def frame_main(self, outputs):
         """ Appelé depuis la boucle infinie, c'est le main d'une frame.
                 Récupération de tous les squelettes
                 Definition de who
@@ -258,17 +269,19 @@ class Personnages3D:
         if persos_2D:
             # Ajout de la profondeur pour 3D
             persos_3D = self.get_persos_3D(persos_2D)
+            self.all_persos_3D.append(persos_3D)
 
             # Récup de who, apply to self.perso
             if persos_3D:
-                self.skelet_nbr = len(persos_3D)
-                self.centers = self.update_centers(persos_3D)
+                self.skelet_nbr = min(len(persos_3D), 4)
+                self.update_centers(persos_3D)
                 whos, dists = self.who_is_who(persos_3D)
                 self.apply_to_personnages(whos, persos_2D, persos_3D, dists)
 
             # Affichage
             self.draw_all_poses()
-            self.draw_all_texts()
+            self.draw_all_textes()
+            self.draw_all_personnages()
 
     def update_centers(self, persos_3D):
         """
@@ -277,104 +290,105 @@ class Personnages3D:
         """
 
         self.last_centers = []
-        for i in range(self.nombre_de_personnage):
+        for i in range(self.person_nbr):
             self.last_centers.append(self.personnages[i].moving_center)
 
         self.new_centers = []
         # 3 squelettes
-        for i in range(len(persos_3D)):
+        for i in range(self.skelet_nbr):
             self.new_centers.append(get_center(persos_3D[i]))
 
+        print("self.last_centers", self.last_centers )
+        print("self.new_centers", self.new_centers)
+
     def who_is_who(self, persos_3D):
-        """Un personnage de la liste des personnages se voit attribuer les datas
-        d'un des squelettes.
-        L'ordre des squelettes détectés n'est pas toujours le même d'une frame
-        à l'autre.
-
-        Exemple: 4 personnages, 3 squelettes dans persos_3D
-            perso1 = squelette_qui
-            perso2 = squelette_qui_d_autre ... etc ...
-
-        Si len(persos_3D) = 3, et len(personnages) = 4:
-            personnages[0].who = 1, ses points sont persos_3D[1]
-            personnages[1].who = 0, ses points sont persos_3D[0]
-            personnages[2].who = None, ses points sont None
-            personnages[3].who = 2, ses points sont persos_3D[2]
-        """
-
-        print("\nDébut de frame")
 
         self.update_centers(persos_3D)
 
-        # Attribution avec l'historique
-        whos, dists = self.attribution_avec_l_historic()
+        for perso in self.personnages:
+            print()
+            print("who", perso.who)
+            print("xys", perso.xys)
+            print("points_3D", perso.points_3D)
+            print("center", perso.center)
+            print("historic", perso.historic)
+            print("moving_center", perso.moving_center)
+            print("dist", perso.dist)
 
-        # Print pour suivi
-        self.some_print(whos)
+        whos = [None]*self.person_nbr
+        dists = [0]*self.person_nbr
 
-        # Attribution pour les non-attribués et pour initier
-        whos = self.attribution_en_dernier_recours_par_ordre(whos)
+        # Bazar avec copie de liste
+        table = [   [1000, 1000, 1000, 1000],  # squelette possible pour perso 0
+                    [1000, 1000, 1000, 1000],
+                    [1000, 1000, 1000, 1000],
+                    [1000, 1000, 1000, 1000]]
 
-        print("----------------------------------------------whos final:", whos)
-        return whos, dists
+        for i in range(self.person_nbr):  # 3
+            for j in range(self.skelet_nbr):  # 4
+                print("dist entre", self.new_centers[j], self.last_centers[i])
+                d = get_distance(self.new_centers[j], self.last_centers[i])
+                if d > 1000:
+                    d = 1000
+                else:
+                    table[i][j] = d
 
-    def attribution_avec_l_historic(self):
-        """Un EMA a été appliqué sur l'historique des centres"""
+        print()
+        print(table[0])
+        print(table[1])
+        print(table[2])
+        print(table[3])
 
-        whos = [None]*self.nombre_de_personnage
-        dists = [0]*self.nombre_de_personnage
-        for i in range(self.nombre_de_personnage):  # 4
-            for j in range(self.skelet_nbr):  # 3
-                dist = get_distance(self.centers[j], self.last_centers[i])
-                if dist and dist < self.distance:
-                    whos[i] = j
-                    dists[i] = dist
-                    print((f"Squelette {j} attribué avec distance = {dist:.2f}"
-                           f"pour self.distance = {self.distance}"))
-        return whos,  dists
+        #  [1.462, 1.444, 1000, 1000]
+        #  [1.462, 1.444, 1000, 1000]
+        #  [1.462, 1.444, 1000, 1000]
+        #  [1.462, 1.444, 1000, 1000]
 
-    def some_print(self, whos):
-        for i in range(self.nombre_de_personnage):
-            a = self.last_centers[i][0]
-            b = self.last_centers[i][1]
-            c = self.last_centers[i][2]
-            if a and b and c:
-                print((f"self.last_centers {self.last_centers[i][0]:.2f}"
-                       f"{self.last_centers[i][1]:.2f}"
-                       f"{self.last_centers[i][2]:.2f}"))
+        # de whos = [None, None, None, None]
+        # avec mini [None, 0, None, None]    perso1 a le squelette0
+        # à  whos = [1, 0, None, None]       perso0 a le squelette1
+
+        # Premier passage avec de dist inférieur au mini
+        for i in range(self.person_nbr):
+            mini = sorted(table[i])[0]
+            # Nouvelle position proche de l'ancienne
+            if mini < self.distance:
+                if i not in whos and i < self.skelet_nbr:
+                    index = table[i].index(mini)
+                    whos[index] = i
+                    dists[index] = mini
+
+        print("premier whos", whos)
+
+        # Deuxième passage: nouveau squelette sans historique ou trop loin
+        skelet_done = [x for x in whos if x is not None]
+        print("skelet_done", skelet_done)  # [0]
+
+        skelet_not_done = []
         for i in range(self.skelet_nbr):
-            if self.centers[i][0] and self.centers[i][1] and self.centers[i][2]:
-                print((f"self.centers {self.centers[i][0]:.2f}"
-                       f"{self.centers[i][1]:.2f} {self.centers[i][2]:.2f}")
-        print("whos:", whos)
+            if i not in skelet_done:
+                skelet_not_done.append(i)
+        print("skelet_not_done", skelet_not_done)
 
-    def attribution_en_dernier_recours_par_ordre(self, whos):
-        """whos = [None]*nombre_de_personnage
-        whos = [None, None, None, None] et nombre_de_squelettes = 2
-        table_persos     =       [0 1 2 3]
-        table_squelettes =       [0 1]
-                                    0    1  2   3
-        whos =                   [None None 0 None]
-        perso_sans_attribution = [  0    1      3]
-        """
-        # Si des squelettes ne sont pas attribués. Combiens à attribuer?
-        nombre_d_attribuer = len([x for x in whos if x is not None])
-        nombre_de_sans_attribution = self.skelet_nbr - nombre_d_attribuer
 
-        if nombre_de_sans_attribution > 0:
-            index = 0
-            for who in whos:
-                if who is None:
-                    whos[index] = index
-                    print("Attribution du squelette", index, "à", index)
-                    nombre_de_sans_attribution -= 1
-                    if nombre_de_sans_attribution == 0:
-                        break
-                index += 1
+        #  skelet_not_done   = [0, 1]
+        #  skelet_done       = []
+        #  occurence de None = [0,     1,    2,    3]
+        #  whos        = [None, None, None, None]
+        #        whos        = [1,    0,    None, None]
 
-        print("Nombre de squlettes attribués =", nombre_d_attribuer)
-        # #print("Personnages sans attribution =", perso_sans_attribution)
-        return whos
+        # Occurence None in whos:
+        None_occurence = []
+        for n, val in enumerate(whos):
+            if val is None:
+                None_occurence.append(n)
+        print("None_occurenceurence de None:", None_occurence)
+
+        for i, sq in enumerate(skelet_not_done):
+            whos[sq] = None_occurence[i]
+
+        print("whos final:", whos, "dists:", dists, "\n")
+        return whos, dists
 
     def apply_to_personnages(self, whos, persos_2D, persos_3D, dists):
         """ whos du type [1, 0, None, 2]
@@ -382,7 +396,7 @@ class Personnages3D:
                                 0 attribué au perso 1 ... etc ...
         """
 
-        for i in range(self.nombre_de_personnage):
+        for i in range(self.person_nbr):
             if whos[i] is not None:
                 self.personnages[i].who = whos[i]
                 self.personnages[i].xys = persos_2D[whos[i]]
@@ -391,8 +405,10 @@ class Personnages3D:
                 self.personnages[i].center = c
                 self.personnages[i].add_historic(c)
                 self.personnages[i].dist = dists[i]
-            else:
-                self.personnages[i].reset()
+            # #else:  TODO utile ou pas, crée une rémanence si skelet perdu
+                # #print("Reset de:", i)
+                # #self.personnages[i].reset()
+        pass
 
     def get_persos_3D(self, persos_2D):
         persos_3D = []
@@ -412,7 +428,7 @@ class Personnages3D:
         for key, val in xys.items():
             if val:
                 # Calcul de la profondeur du point
-                # TODO: mettre dans fct
+                # TODO: mettre dans fct depuis ici !!!!!!!!!!!!!!!!!!!!!!!!!!!!!
                 distances = []
                 x, y = val[0], val[1]
                 # around = nombre de pixel autour du points
@@ -440,6 +456,7 @@ class Personnages3D:
                     for item in goods:
                         somme += item
                     profondeur = somme/len(goods)
+                    # TODO: jusque là !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
                     # Calcul les coordonnées 3D avec x et y coordonnées dans
                     # l'image et la profondeur du point
@@ -481,9 +498,9 @@ class Personnages3D:
             bx, by = xys[b]
             cv2.line(self.color_arr, (ax, ay), (bx, by), color, 2)
 
-    def draw_all_texts(self):
+    def draw_all_textes(self):
         for i, perso in enumerate(self.personnages):
-            if perso.center and perso.center[2]:
+            if perso.dist:
                 text = perso.dist
                 x = 30
                 y = 200 + i*100
@@ -498,6 +515,24 @@ class Personnages3D:
                     2,                          # taille police
                     color,                      # couleur
                     4)                          # épaisseur
+
+    def draw_all_personnages(self):
+        self.black = np.zeros((720, 1280, 3), dtype = "uint8")
+        cv2.line(self.black, (0, 360), (1280, 360), (255, 255, 255), 2)
+        for i, perso in enumerate(self.personnages):
+            if perso.center and perso.center[0] and perso.center[2]:
+                x = 360 + int(perso.center[0]*160)
+                if x < 0: x = 0
+                if x > 1280: x = 1280
+                y = int(perso.center[2]*160)
+                if y < 0: y = 0
+                if y > 720: y = 720
+                # #print(x, y)
+                self.draw_personnage(y, x, COLORS[i])
+
+    def draw_personnage(self, x, y, color):
+        cv2.circle(self.black, (x, y), 10, (100, 100, 100), -1)
+        cv2.circle(self.black, (x, y), 12, color=color, thickness=2)
 
     def send_OSC(self):
         """Envoi en OSC des points 3D de tous les personnages"""
@@ -528,17 +563,18 @@ class Personnages3D:
 
             outputs = self.this_posenet.get_outputs(self.color_arr)
             # Recherche des personnages captés
-            self.get_personnages(outputs)
+            self.frame_main(outputs)
 
             # Envoi OSC
-            # #self.send_OSC()
+            self.send_OSC()
 
             # Affichage de l'image
             cv2.imshow('color', self.color_arr)
+            cv2.imshow('position', self.black)
 
             # Calcul du FPS, affichage toutes les 10 s
             if time() - t0 > 10:
-                print("FPS =", int(nbr/10))
+                # #print("FPS =", int(nbr/10))
                 t0, nbr = time(), 0
 
             # Pour quitter
@@ -550,15 +586,21 @@ class Personnages3D:
 
 
 def get_distance(p1, p2):
-    """Distance entre les points p1 et p2"""
+    """Distance entre les points p1 et p2, dans le plan horizontal,
+    sans prendre en compte le y qui est la verticale.
+    """
 
     if p1 and p2:
         if None not in p1 and None not in p2:
-            d = ((p1[0] - p2[0])**2 + (p1[1] - p2[1])**2 + (p1[2] - p2[2])**2)
-            return d**0.5
+            d = ((p1[0] - p2[0])**2 + (p1[2] - p2[2])**2)**0.5
+            return d
+    return 1000
 
 
 def get_center(points_3D):
+    """Le centre est le centre de vue du dessus,
+        la verticale (donc le y) n'est pas prise en compte.
+    """
 
     center = []
     if points_3D:
@@ -601,27 +643,3 @@ if __name__ == '__main__':
     """Excécution de ce script en standalone"""
 
     main()
-
-
-    # #def attribution_avec_le_dernier_proche(self, persos_3D):
-        # #self.last_centers = []
-        # ## 4 personnages
-        # #for i in range(self.nombre_de_personnage):
-            # #self.last_centers.append(self.personnages[i].center)
-
-        # #self.new_centers = []
-        # ## 3 squelettes
-        # #for i in range(len(persos_3D)):
-            # #self.new_centers.append(get_center(persos_3D[i]))
-
-        # ## Parcours des 4 personnages et des 3 squelettes
-        # ## self.last_centers [[-0.0814, -0.0644, 0.922], [0, 0, 0]]
-        # ## self.new_centers [[-0.0864, -0.0363, 0.936]]
-        # #whos = [None]*self.nombre_de_personnage
-        # #for i in range(self.nombre_de_personnage):  # 4
-            # #for j in range(len(persos_3D)):  # 3
-                # #dist = get_distance(self.new_centers[j], self.last_centers[i])
-                # #if dist and dist < self.distance:
-                        # #whos[i] = j
-                        # #print(f"Squelette {j} attribué avec distance = {dist:.2f} pour self.distance = {self.distance}")
-        # #return whos, self.last_centers, self.new_centers
