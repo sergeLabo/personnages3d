@@ -54,7 +54,7 @@ class ThisPosenet:
                  f'{model_size[0]}_{model_size[1]}'
                  f'_quant_decoder_edgetpu.tflite'   )
         print('Loading model: ', model)
-        self.engine = PoseEngine(model, mirror=False)
+
         try:
             self.engine = PoseEngine(model, mirror=False)
         except:

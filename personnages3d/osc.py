@@ -18,11 +18,12 @@ class OscClient:
         """index de 0 à 3"""
 
         bund = []
-
         for i, msg in enumerate(messages):
+            if not msg:
+                msg = [1000, 1000, 1000]
             tag = ('/' + str(index) + '_' + str(i)).encode('utf-8')
             bund.append([tag, msg])
-
+        print(bund)
         self.client.send_bundle(bund)
 
 

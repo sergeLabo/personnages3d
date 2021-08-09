@@ -118,7 +118,9 @@ class Personnage:
         self.EMA_update()
 
     def EMA_update(self):
-        """Le centre est vu du dessus, pas de verticale=y"""
+        """Filtre ave moyenne glissante, crée de la latence,
+        Le centre est vu du dessus, pas de verticale=y
+        """
 
         for j in range(3):
             self.moving_center[j] = moving_average(self.historic[j], 4,
@@ -181,13 +183,16 @@ class Personnages3D:
         self.personnages_window()
 
     def personnages_window(self):
+        """Fenêtre pour la vur du dessus"""
+
         self.black = np.zeros((720, 1280, 3), dtype = "uint8")
         cv2.namedWindow('position', cv2.WINDOW_AUTOSIZE)
         cv2.line(self.black, (0, 360), (1280, 360), (255, 255, 255), 2)
 
     def create_trackbar(self):
         """trackbar = slider
-        1 sliders: seuil de confiance
+        2 sliders: seuil de confiance et distance d'affectation d'un squelette
+        à un personnage.
         Le message Depracated est un bug !! de la 4.5.1 (ou 4.5.2)
         corrigé dans la prochaine version.
         """
@@ -253,7 +258,7 @@ class Personnages3D:
         print(f"Taille des images:"
               f"     {img.shape[1]}x{img.shape[0]}")
 
-    def frame_main(self, outputs):
+    def main_frame(self, outputs):
         """ Appelé depuis la boucle infinie, c'est le main d'une frame.
                 Récupération de tous les squelettes
                 Definition de who
@@ -319,19 +324,18 @@ class Personnages3D:
         dists = [0]*self.person_nbr
 
         # Bazar avec copie de liste
+        #   squelette 0     1     2     3
         table = [   [1000, 1000, 1000, 1000],  # squelette possible pour perso 0
-                    [1000, 1000, 1000, 1000],
-                    [1000, 1000, 1000, 1000],
-                    [1000, 1000, 1000, 1000]]
+                    [1000, 1000, 1000, 1000],  # squelette possible pour perso 1
+                    [1000, 1000, 1000, 1000],  # squelette possible pour perso 2
+                    [1000, 1000, 1000, 1000]]  # squelette possible pour perso 3
 
         for i in range(self.person_nbr):  # 3
             for j in range(self.skelet_nbr):  # 4
                 print("dist entre", self.new_centers[j], self.last_centers[i])
                 d = get_distance(self.new_centers[j], self.last_centers[i])
-                if d > 1000:
-                    d = 1000
-                else:
-                    table[i][j] = d
+                if d > 1000: d = 1000  # pour faire joli
+                else: table[i][j] = d
 
         print()
         print(table[0])
@@ -339,14 +343,14 @@ class Personnages3D:
         print(table[2])
         print(table[3])
 
-        #  [1.462, 1.444, 1000, 1000]
-        #  [1.462, 1.444, 1000, 1000]
-        #  [1.462, 1.444, 1000, 1000]
-        #  [1.462, 1.444, 1000, 1000]
+        # [0.0293, 1000, 1000, 1000]
+        # [1000,   1000, 1000, 1000]
+        # [1000,   1000, 1000, 1000]
+        # [1000,   1000, 1000, 1000]
 
         # de whos = [None, None, None, None]
-        # avec mini [None, 0, None, None]    perso1 a le squelette0
-        # à  whos = [1, 0, None, None]       perso0 a le squelette1
+        # avec distance < mini --> [None, 0, None, None]  perso1 a le squelette0
+        # avec whos = [1, 0, None, None] perso0 a le squelette1
 
         # Premier passage avec de dist inférieur au mini
         for i in range(self.person_nbr):
@@ -357,7 +361,6 @@ class Personnages3D:
                     index = table[i].index(mini)
                     whos[index] = i
                     dists[index] = mini
-
         print("premier whos", whos)
 
         # Deuxième passage: nouveau squelette sans historique ou trop loin
@@ -369,7 +372,6 @@ class Personnages3D:
             if i not in skelet_done:
                 skelet_not_done.append(i)
         print("skelet_not_done", skelet_not_done)
-
 
         #  skelet_not_done   = [0, 1]
         #  skelet_done       = []
@@ -428,46 +430,54 @@ class Personnages3D:
         for key, val in xys.items():
             if val:
                 # Calcul de la profondeur du point
-                # TODO: mettre dans fct depuis ici !!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-                distances = []
-                x, y = val[0], val[1]
-                # around = nombre de pixel autour du points
-                x_min = max(x - self.around, 0)
-                x_max = min(x + self.around, self.depth_frame.width)
-                y_min = max(y - self.around, 0)
-                y_max = min(y + self.around, self.depth_frame.height)
-
-                for u in range(x_min, x_max):
-                    for v in range(y_min, y_max):
-                        # Profondeur du point de coordonnée (u, v) dans l'image
-                        distances.append(self.depth_frame.get_distance(u, v))
-
-                # Si valeurs non trouvées, retourne [0.0, 0.0, 0.0, 0.0]
-                # Remove the item 0.0 for all its occurrences
-                dists = [i for i in distances if i != 0.0]
-                dists_sort = sorted(dists)
-                if len(dists_sort) > 2:  # TODO: voir si else ?
-                    # Suppression du plus petit et du plus grand
-                    goods = dists_sort[1:-1]
-                    # TODO: rajouter un filtre sur les absurdes ?
-
-                    # Calcul de la moyenne des profondeur
-                    somme = 0
-                    for item in goods:
-                        somme += item
-                    profondeur = somme/len(goods)
-                    # TODO: jusque là !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-
+                profondeur = self.get_profondeur(val)
+                if profondeur:
                     # Calcul les coordonnées 3D avec x et y coordonnées dans
                     # l'image et la profondeur du point
                     # Changement du nom de la fonction trop long
                     point_2D_to_3D = rs.rs2_deproject_pixel_to_point
                     point_with_deph = point_2D_to_3D(self.depth_intrinsic,
-                                                     [x, y],
+                                                     [val[0], val[1]],  # x, y
                                                      profondeur)
                     points_3D[key] = point_with_deph
 
         return points_3D
+
+    def get_profondeur(self, val):
+        """Calcul la moyenne des profondeurs des pixels auour du point considéré
+        Filtre les absurdes et les trop loins
+        """
+        profondeur = None
+        distances = []
+        x, y = val[0], val[1]
+        # around = nombre de pixel autour du points
+        x_min = max(x - self.around, 0)
+        x_max = min(x + self.around, self.depth_frame.width)
+        y_min = max(y - self.around, 0)
+        y_max = min(y + self.around, self.depth_frame.height)
+
+        for u in range(x_min, x_max):
+            for v in range(y_min, y_max):
+                # Profondeur du point de coordonnée (u, v) dans l'image
+                distances.append(self.depth_frame.get_distance(u, v))
+
+        # Si valeurs non trouvées, retourne [0.0, 0.0, 0.0, 0.0]
+        # Remove the item 0.0 for all its occurrences
+        dists = [i for i in distances if i != 0.0]
+        dists_sort = sorted(dists)
+        if len(dists_sort) > 2:
+            # Suppression du plus petit et du plus grand
+            goods = dists_sort[1:-1]
+            # TODO: rajouter un filtre sur les absurdes ?
+
+            # Calcul de la moyenne des profondeur
+            somme = 0
+            for item in goods:
+                somme += item
+            profondeur = somme/len(goods)
+        # TODO: voir si else utile
+
+        return profondeur
 
     def draw_all_poses(self):
         for i, perso in enumerate(self.personnages):
@@ -563,7 +573,7 @@ class Personnages3D:
 
             outputs = self.this_posenet.get_outputs(self.color_arr)
             # Recherche des personnages captés
-            self.frame_main(outputs)
+            self.main_frame(outputs)
 
             # Envoi OSC
             self.send_OSC()
