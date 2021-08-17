@@ -3,10 +3,10 @@
 Pose Estimation with Intel Realsense Posenet Coral
 
 ### Détection de 1 à 4 personnes
-
+* Inferface graphique réalisée avec Kivy
+* Suivi des personnes devant la caméra
 
 ### Installation
-
 #### Coral
 ```bash
 sudo apt install python3-venv
