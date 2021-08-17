@@ -12,9 +12,7 @@ Envoi de toutes les coordonnées de tous les points en OSC.
 
 import os
 from time import time, sleep
-import enum
-import json
-from datetime import datetime
+from threading import Thread
 
 import numpy as np
 import cv2
@@ -22,6 +20,7 @@ import pyrealsense2 as rs
 
 from posenet.this_posenet import ThisPosenet
 from posenet.pose_engine import EDGES
+
 
 from myconfig import MyConfig
 from osc import OscClient
@@ -105,25 +104,37 @@ class Personnage:
         self.historic[0] = [0]*10
         self.historic[1] = [0]*10
         self.historic[2] = [0]*10
+        # Moyenne lissée
         self.moving_center = [1000]*3
+        # Prédiction de la position future
+        self.future = [0]*3
         self.dist = 0
 
     def add_historic(self, centre):
         """Ajout dans la pile, suppr du premier"""
 
+        if centre:
+            for i in range(3):
+                if centre[i]:
+                    self.historic[i].append(centre[i])
+                    del self.historic[i][0]
+            self.EMA_update()
+            self.predict_the_future()
+
+    def predict_the_future(self):
+        """Predit la position du personnage à la frame suivante, pour optimiser
+        le calcul de distance lors de l'attribution d'un squelette.
+        10, 12 prochain = 14 --> 12 + 2 = 14, 12 + 12 - 10 = 24 - 10
+        """
         for i in range(3):
-            if centre[i]:
-                self.historic[i].append(centre[i])
-                del self.historic[i][0]
-        self.EMA_update()
+            self.future[i] = 2*self.historic[i][-1] - self.historic[i][-2]
 
     def EMA_update(self):
         """Filtre ave moyenne glissante, crée de la latence,
         Le centre est vu du dessus, pas de verticale=y
         """
-
-        for j in range(3):
-            self.moving_center[j] = moving_average(self.historic[j], 4,
+        for i in range(3):
+            self.moving_center[i] = moving_average(self.historic[i], 4,
                                     type='simple')  # 'exponentiel' ou 'simple'
 
 
@@ -136,38 +147,37 @@ class Personnages3D:
     """
     # TODO Calcul sur cpu ?
 
-    def __init__(self):
-        """Les paramètres sont à définir dans le fichier personnages3d.ini
-        En principe, rien ne doit être modifié dans les autres paramètres.
-        """
+    def __init__(self, **kwargs):
+        """Les paramètres sont définis dans le fichier personnages3d.ini"""
 
-        ini_file = 'personnages3d.ini'
-        self.config_obj = MyConfig(ini_file)
-        self.config = self.config_obj.conf
+        self.config = kwargs
         print(f"Configuration:\n{self.config}\n\n")
 
+        # 1 pour avoir les print
+        self.debug = 0
+
         # Seuil de confiance de reconnaissance du squelette
-        self.threshold = int(self.config['pose']['threshold'])/100
+        self.threshold = float(self.config['pose']['threshold'])
 
         # Nombre de pixels autour du point pour moyenne du calcul de profondeur
-        self.around = self.config['pose']['around']
+        self.around = int(self.config['pose']['around'])
 
         # Distance de rémanence pour attribution des squelettes
-        self.distance = int(self.config['pose']['distance'])/100
+        self.distance = float(self.config['pose']['distance'])
 
         # Taille d'image possible: 1280x720, 640x480 seulement
         # 640x480 est utile pour fps > 30
         # Les modèles posenet imposent une taille d'image
-        self.width = self.config['camera']['width_input']
-        self.height = self.config['camera']['height_input']
+        self.width = int(self.config['camera']['width_input'])
+        self.height = int(self.config['camera']['height_input'])
 
         # Plein écran de la fenêtre OpenCV
-        self.full_screen = self.config['camera']['full_screen']
+        self.full_screen = int(self.config['camera']['full_screen'])
 
         # Le client va utiliser l'ip et port du *.ini
         self.osc = OscClient(**self.config['osc'])
 
-        self.create_trackbar()
+        self.create_window()
         self.set_pipeline()
 
         self.this_posenet = ThisPosenet(self.width, self.height)
@@ -180,23 +190,11 @@ class Personnages3D:
         self.skelet_nbr = 0
         self.new_centers = None
         self.all_persos_3D = []
-        self.personnages_window()
 
-    def personnages_window(self):
-        """Fenêtre pour la vur du dessus"""
+        # GUI
+        self.loop = 1
 
-        self.black = np.zeros((720, 1280, 3), dtype = "uint8")
-        cv2.namedWindow('position', cv2.WINDOW_AUTOSIZE)
-        cv2.line(self.black, (0, 360), (1280, 360), (255, 255, 255), 2)
-
-    def create_trackbar(self):
-        """trackbar = slider
-        2 sliders: seuil de confiance et distance d'affectation d'un squelette
-        à un personnage.
-        Le message Depracated est un bug !! de la 4.5.1 (ou 4.5.2)
-        corrigé dans la prochaine version.
-        """
-
+    def create_window(self):
         if self.full_screen:
             cv2.namedWindow('color', cv2.WND_PROP_FULLSCREEN)
             cv2.setWindowProperty('color', cv2.WND_PROP_FULLSCREEN,
@@ -204,33 +202,23 @@ class Personnages3D:
         else:
             cv2.namedWindow('color', cv2.WINDOW_AUTOSIZE)
 
-        cv2.createTrackbar('threshold', 'color', int(self.threshold*100), 100,
-                            self.onChange_threshold)
-
-        cv2.createTrackbar('distance_', 'color', int(self.distance*100), 100,
-                            self.onChange_distance)
-
-    def onChange_distance(self, value):
-        """distance = 0.01 à 1 pour slider de 0 à 100"""
-
-        if value == 0:
-            value = 1
-        self.config_obj.save_config('pose', 'distance', value)
-        value *= 0.01
-        self.distance = value
-
-    def onChange_threshold(self, value):
-        """threshold = 0.01 à 1 pour slider de 0 à 100"""
-
-        if value == 0:
-            value = 1
-        self.config_obj.save_config('pose', 'threshold', value)
-        value *= 0.01
-        self.threshold = value
+        # Fenêtre pour la vue du dessus
+        cv2.namedWindow('vue du dessus', cv2.WINDOW_AUTOSIZE)
+        self.black = np.zeros((720, 1280, 3), dtype = "uint8")
 
     def set_pipeline(self):
-        """Crée le flux d'image avec la caméra D455"""
+        """Crée le flux d'image avec la caméra D455
 
+        1. (    self: pyrealsense2.pyrealsense2.config,
+                stream_type: pyrealsense2.pyrealsense2.stream,
+                stream_index: int,
+                width: int,
+                height: int,
+                format: pyrealsense2.pyrealsense2.format = <format.any: 0>,
+                framerate: int = 0) -> None
+
+        format=rs.format.z16
+        """
         self.pipeline = rs.pipeline()
         config = rs.config()
         pipeline_wrapper = rs.pipeline_wrapper(self.pipeline)
@@ -241,10 +229,16 @@ class Personnages3D:
             os._exit(0)
 
         device = pipeline_profile.get_device()
-        config.enable_stream(rs.stream.color, self.width, self.height,
-                                                            rs.format.bgr8, 30)
-        config.enable_stream(rs.stream.depth, self.width, self.height,
-                                                            rs.format.z16, 30)
+        config.enable_stream(   rs.stream.color,
+                                width=self.width,
+                                height=self.height,
+                                format=rs.format.bgr8,
+                                framerate=30)
+        config.enable_stream(   rs.stream.depth,
+                                width=self.width,
+                                height=self.height,
+                                format=rs.format.z16,
+                                framerate=30)
         self.pipeline.start(config)
         self.align = rs.align(rs.stream.color)
         unaligned_frames = self.pipeline.wait_for_frames()
@@ -293,32 +287,35 @@ class Personnages3D:
         last_centers = liste des centres tirée de l'historique des piles de centre
         self.new_centers = liste des centres des squelettes de la frame
         """
-
+        # TODO remplacer last_centers par future_centers
         self.last_centers = []
         for i in range(self.person_nbr):
-            self.last_centers.append(self.personnages[i].moving_center)
+            # #self.last_centers.append(self.personnages[i].moving_center)
+            self.last_centers.append(self.personnages[i].future)
 
         self.new_centers = []
         # 3 squelettes
         for i in range(self.skelet_nbr):
             self.new_centers.append(get_center(persos_3D[i]))
 
-        print("self.last_centers", self.last_centers )
-        print("self.new_centers", self.new_centers)
+        if self.debug:
+            print("self.last_centers", self.last_centers )
+            print("self.new_centers", self.new_centers)
 
     def who_is_who(self, persos_3D):
 
         self.update_centers(persos_3D)
 
-        for perso in self.personnages:
-            print()
-            print("who", perso.who)
-            print("xys", perso.xys)
-            print("points_3D", perso.points_3D)
-            print("center", perso.center)
-            print("historic", perso.historic)
-            print("moving_center", perso.moving_center)
-            print("dist", perso.dist)
+        if self.debug:
+            for perso in self.personnages:
+                print()
+                print("who", perso.who)
+                print("xys", perso.xys)
+                print("points_3D", perso.points_3D)
+                print("center", perso.center)
+                print("historic", perso.historic)
+                print("moving_center", perso.moving_center)
+                print("dist", perso.dist)
 
         whos = [None]*self.person_nbr
         dists = [0]*self.person_nbr
@@ -332,16 +329,18 @@ class Personnages3D:
 
         for i in range(self.person_nbr):  # 3
             for j in range(self.skelet_nbr):  # 4
-                print("dist entre", self.new_centers[j], self.last_centers[i])
+                if self.debug:
+                    print("dist entre", self.new_centers[j], self.last_centers[i])
                 d = get_distance(self.new_centers[j], self.last_centers[i])
                 if d > 1000: d = 1000  # pour faire joli
                 else: table[i][j] = d
 
-        print()
-        print(table[0])
-        print(table[1])
-        print(table[2])
-        print(table[3])
+        if self.debug:
+            print()
+            print(table[0])
+            print(table[1])
+            print(table[2])
+            print(table[3])
 
         # [0.0293, 1000, 1000, 1000]
         # [1000,   1000, 1000, 1000]
@@ -361,17 +360,20 @@ class Personnages3D:
                     index = table[i].index(mini)
                     whos[index] = i
                     dists[index] = mini
-        print("premier whos", whos)
+        if self.debug:
+            print("premier whos", whos)
 
         # Deuxième passage: nouveau squelette sans historique ou trop loin
         skelet_done = [x for x in whos if x is not None]
-        print("skelet_done", skelet_done)  # [0]
+        if self.debug:
+            print("skelet_done", skelet_done)  # [0]
 
         skelet_not_done = []
         for i in range(self.skelet_nbr):
             if i not in skelet_done:
                 skelet_not_done.append(i)
-        print("skelet_not_done", skelet_not_done)
+        if self.debug:
+            print("skelet_not_done", skelet_not_done)
 
         #  skelet_not_done   = [0, 1]
         #  skelet_done       = []
@@ -384,12 +386,14 @@ class Personnages3D:
         for n, val in enumerate(whos):
             if val is None:
                 None_occurence.append(n)
-        print("None_occurenceurence de None:", None_occurence)
+        if self.debug:
+            print("None_occurenceurence de None:", None_occurence)
 
         for i, sq in enumerate(skelet_not_done):
             whos[sq] = None_occurence[i]
 
-        print("whos final:", whos, "dists:", dists, "\n")
+        if self.debug:
+            print("whos final:", whos, "dists:", dists, "\n")
         return whos, dists
 
     def apply_to_personnages(self, whos, persos_2D, persos_3D, dists):
@@ -537,7 +541,6 @@ class Personnages3D:
                 y = int(perso.center[2]*160)
                 if y < 0: y = 0
                 if y > 720: y = 720
-                # #print(x, y)
                 self.draw_personnage(y, x, COLORS[i])
 
     def draw_personnage(self, x, y, color):
@@ -558,6 +561,52 @@ class Personnages3D:
         nbr = 0
 
         while True:
+            nbr += 1
+            frames = self.pipeline.wait_for_frames(timeout_ms=80)
+
+            # Align the depth frame to color frame
+            aligned_frames = self.align.process(frames)
+
+            color = aligned_frames.get_color_frame()
+            self.depth_frame = aligned_frames.get_depth_frame()
+
+            if not self.depth_frame and not color:
+                continue
+
+            color_data = color.as_frame().get_data()
+            self.color_arr = np.asanyarray(color_data)
+
+            outputs = self.this_posenet.get_outputs(self.color_arr)
+
+            # Recherche des personnages captés
+            self.main_frame(outputs)
+
+            # Envoi OSC
+            self.send_OSC()
+
+            # Affichage de l'image
+            cv2.imshow('color', self.color_arr)
+            cv2.imshow('vue du dessus', self.black)
+
+            # Calcul du FPS, affichage toutes les 10 s
+            if time() - t0 > 10:
+                # #print("FPS =", int(nbr/10))
+                t0, nbr = time(), 0
+
+            # Pour quitter
+            if cv2.waitKey(1) & 0xFF == 27:
+                break
+
+        # Du OpenCV propre
+        cv2.destroyAllWindows()
+
+    def run_Process(self, conn):
+        """Boucle infinie, quitter avec Echap dans la fenêtre OpenCV"""
+
+        t0 = time()
+        nbr = 0
+        self.receive_thread(conn)
+        while self.loop:
             nbr += 1
             frames = self.pipeline.wait_for_frames()
             # Align the depth frame to color frame
@@ -580,11 +629,11 @@ class Personnages3D:
 
             # Affichage de l'image
             cv2.imshow('color', self.color_arr)
-            cv2.imshow('position', self.black)
+            cv2.imshow('vue du dessus', self.black)
 
             # Calcul du FPS, affichage toutes les 10 s
             if time() - t0 > 10:
-                # #print("FPS =", int(nbr/10))
+                print("FPS =", int(nbr/10))
                 t0, nbr = time(), 0
 
             # Pour quitter
@@ -593,6 +642,24 @@ class Personnages3D:
 
         # Du OpenCV propre
         cv2.destroyAllWindows()
+
+    def receive_thread(self, conn):
+        t = Thread(target=self.receive, args=(conn, ))
+        t.start()
+
+    def receive(self, conn):
+        while self.loop:
+            data = conn.recv()
+            print("dans run processus =", data)
+            if data[0] == 'quit':
+                self.loop = 0
+            elif data[0] == 'threshold':
+                self.threshold = data[1]
+            elif data[0] == 'around':
+                self.around = data[1]
+            elif data[0] == 'distance':
+                self.distance = data[1]
+            sleep(0.001)
 
 
 def get_distance(p1, p2):
@@ -642,11 +709,21 @@ def get_moyenne(points_3D, indice):
 
 def main():
 
+    ini_file = 'personnages3d.ini'
+    config_obj = MyConfig(ini_file)
+    config = config_obj.conf
+
     # Création de l'objet
-    p3d = Personnages3D()
+    p3d = Personnages3D(**config)
 
     # On tourne, silence, caméra, action !!!
     p3d.run()
+
+
+def run_in_Process(config, conn):
+
+    p3d = Personnages3D(**config)
+    p3d.run_Process(conn)
 
 
 if __name__ == '__main__':

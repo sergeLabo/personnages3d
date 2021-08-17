@@ -15,12 +15,9 @@
 
 
 import os
-try:
-    # import pour personnages3d.py
-    from posenet.pose_engine import PoseEngine
-except:
-    # import ici
-    from pose_engine import PoseEngine
+
+from posenet.pose_engine import PoseEngine
+
 
 class ThisPosenet:
 
@@ -29,7 +26,6 @@ class ThisPosenet:
         self.width = width
         self.height = height
         self.get_engine()
-        self.detection = self.engine.DetectPosesInImage
 
     def get_engine(self):
         """Crée le moteur de calcul avec le stick Coral"""
@@ -63,8 +59,7 @@ class ThisPosenet:
             os._exit(0)
 
     def get_outputs(self, color_arr):
-
-        outputs, inference_time = self.detection(color_arr)
+        outputs, inference_time = self.engine.DetectPosesInImage(color_arr)
         return outputs
 
 

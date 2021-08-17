@@ -1,0 +1,188 @@
+#:kivy 2.0.0
+
+<MainScreen>:
+    BoxLayout: # une boite pour tout
+        orientation: 'vertical'
+        canvas:
+            Color:
+                rgb: 1, 1, 1  # Fond blanc
+            Rectangle:
+                size: self.size
+                pos: self.pos
+        BoxLayout: # une boite pour baisser le titre
+            orientation: 'vertical'
+            size_hint_y: 0.2
+        Label:  # Titre de l'application
+            size_hint_y: 0.3
+            text: root.titre
+            size_hint_y: 0.2
+            font_size: '64dp'
+            color: (0.5, 0.5, 0, 1)
+
+        BoxLayout: # bouton pour lancer
+            orientation: 'vertical'
+            size_hint_y: 0.5
+            BoxLayout:
+                size_hint_y: 0.2
+            BoxLayout: #
+                orientation: 'horizontal'
+                BoxLayout:
+                    size_hint_x: 0.3
+                Button:  # Lancer Personnages 3D à
+                    size_hint_x: 0.3
+                    size_hint_y: 0.6
+                    background_color: (0.8, 0.8, 0.8, 1)
+                    text: 'Lancer Personnages 3D'
+                    color: (0, 1, 0, 1)
+                    font_size: '22dp'
+                    disabled: True if root.enable else False
+                    on_release: root.run_personnages3d()
+                BoxLayout:
+                    size_hint_x: 0.3
+            BoxLayout:
+                size_hint_y: 0.4
+
+        BoxLayout: #
+            orientation: 'horizontal'
+            size_hint_y: 0.2
+            Button:  # Settings
+                background_color: (0.7, 0.7, 0.7, 1)
+                text: 'Réglages à chaud'
+                color: (0, 1, 0, 1)
+                font_size: '22dp'
+                on_release: app.root.current = 'MySettings'
+            Button:  # Options
+                background_color: (0.7, 0.7, 0.7, 1)
+                text: 'Options'
+                color: (0, 1, 0, 1)
+                font_size: '22dp'
+                on_release: app.open_settings()
+            Button:  # Quitter
+                background_color: (0.6, 0.6, 0.6, 1)
+                text: 'Quitter'
+                color: (0, 1, 0, 1)
+                font_size: '22dp'
+                on_release: app.do_quit()
+
+<MySettings>:
+    BoxLayout: # une boite pour tout
+        orientation: 'vertical'
+
+        BoxLayout: # une boite pour slider et toggle
+            orientation: 'vertical'
+            size_hint_y: 0.80
+            BoxLayout: # une boite texte et affichage
+                orientation: 'horizontal'
+                size_hint_y: 0.10
+                Label:  # threshold
+                    text: 'Seuil de détection'
+                    font_size: '24dp'
+                    color: (0.5, 0.5, 0, 1)
+                Label:  # threshold
+                    text: str(root.threshold)
+                    font_size: '36dp'
+                    color: (0.5, 0.5, 0, 1)
+            Slider: # threshold
+                size_hint_y: 0.10
+                id: threshold
+                orientation: 'horizontal'
+                range: 0.01, 1
+                value: root.threshold
+                value_position: root.threshold
+                on_value: root.do_slider('threshold', *args)
+            BoxLayout: # une boite texte et affichage
+                size_hint_y: 0.10
+                orientation: 'horizontal'
+                Label:  # distance
+                    text: 'Distance de suivi'
+                    font_size: '24dp'
+                    color: (0.5, 0.5, 0, 1)
+                Label:  # distance
+                    text: str(root.distance)
+                    font_size: '36dp'
+                    color: (0.5, 0.5, 0, 1)
+            Slider:
+                size_hint_y: 0.10
+                id: distance
+                orientation: 'horizontal'
+                range: 0.01, 1
+                value: root.distance
+                value_position: root.threshold
+                on_value: root.do_slider('distance', *args)
+            BoxLayout: # une boite texte et affichage
+                size_hint_y: 0.10
+                orientation: 'horizontal'
+                Label:  # around
+                    text: 'Nombre de pixels autour du point'
+                    font_size: '24dp'
+                    color: (0.5, 0.5, 0, 1)
+                Label:  # around
+                    text: str(root.around)
+                    font_size: '36dp'
+                    color: (0.5, 0.5, 0, 1)
+            Slider:
+                size_hint_y: 0.10
+                id: around
+                orientation: 'horizontal'
+                range: 1, 5
+                value: root.around
+                value_position: root.around
+                on_value: root.do_slider('around', *args)
+
+            BoxLayout: # une boite pour espacer
+                orientation: 'horizontal'
+                size_hint_y: 0.10
+
+            BoxLayout: # une boite pour les toggle
+                orientation: 'horizontal'
+                size_hint_y: 0.10
+                ToggleButton:
+                    text:'1 Personnages'
+                    group: 'personne'
+                    id: p1
+                    on_press: root.set_personnages_number(1)
+                    state: 'normal'
+                ToggleButton:
+                    text:'2 Personnages'
+                    group: 'personne'
+                    id: p2
+                    on_press: root.set_personnages_number(2)
+                    state: 'normal'
+                ToggleButton:
+                    text:'3 Personnages'
+                    group: 'personne'
+                    id: p3
+                    on_press: root.set_personnages_number(3)
+                    state: 'normal'
+                ToggleButton:
+                    text:'4 Personnages'
+                    group: 'personne'
+                    id: p4
+                    on_press: root.set_personnages_number(4)
+                    state: 'normal'
+
+        BoxLayout: # une boite pour espacer
+            orientation: 'horizontal'
+            size_hint_y: 0.05
+
+        BoxLayout: # une boite pour options retour quitter
+            orientation: 'horizontal'
+            size_hint_y: 0.15
+            Button:  # Settings
+                background_color: (0.7, 0.7, 0.7, 1)
+                text: 'Retour'
+                color: (0, 1, 0, 1)
+                font_size: '22dp'
+                on_release: app.root.current = 'Main'
+            Button:  # Options
+                background_color: (0.7, 0.7, 0.7, 1)
+                text: 'Options'
+                color: (0, 1, 0, 1)
+                font_size: '22dp'
+                on_release: app.open_settings()
+            Button:  # Quitter
+                background_color: (0.6, 0.6, 0.6, 1)
+                text: 'Quitter'
+                color: (0, 1, 0, 1)
+                font_size: '22dp'
+                on_release: app.do_quit()

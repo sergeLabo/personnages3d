@@ -1,23 +1,4 @@
 
-#######################################################################
-# Copyright (C) sergeLabo August 2021
-#
-# This file is part of multiposenet.
-
-# multiposenet is free software: you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation, either version 3 of the License, or
-# (at your option) any later version.
-
-# multiposenet is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details.
-
-# You should have received a copy of the GNU General Public License
-# along with multiposenet.  If not, see <https://www.gnu.org/licenses/>.
-#######################################################################
-
 
 """
 Charge une configuration à partir d'un fichier *.ini
@@ -58,7 +39,7 @@ class MyConfig():
         for section_name in parser.sections():
             self.conf[section_name] = {}
             for key, value in parser.items(section_name):
-                self.conf[section_name][key] = ast.literal_eval(value)
+                self.conf[section_name][key] = value  #ast.literal_eval(value)
 
         if self.verbose:
             print(f"\nConfiguration chargée depuis {self.ini}")

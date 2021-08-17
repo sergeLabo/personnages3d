@@ -1,4 +1,0 @@
-numpy
-pyosc
-python-opencv
-kivy
