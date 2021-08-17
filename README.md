@@ -2,6 +2,11 @@
 
 Pose Estimation with Intel Realsense Posenet Coral
 
+<p align="center">
+<img src="/doc/perso_kiwi.png" width="400" height="400"/>
+</p>
+
+
 ### Détection de 1 à 4 personnes
 * Inferface graphique réalisée avec Kivy
 * Suivi des personnes devant la caméra
