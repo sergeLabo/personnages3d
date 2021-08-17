@@ -44,11 +44,11 @@ sudo apt install python3-pycoral python3-tflite-runtime
 #### Python
 ```bash
 cd /le/projet/personnages3d
-python3 -m venv mon_env
+python3 -m venv --system-site-packages mon_env
 source mon_env/bin/activate
-python3 -m pip install -r --system-site-packages requirements.txt
+python3 -m pip install -r requirements.txt
 ```
---system-site-packages permet à venv d'accéder aux packages system
+--system-site-packages permet à venv d'accéder aux packages system où sont installé pycoral et tflite-runtime
 
 #### Depuis les sources sur GitHub
 
