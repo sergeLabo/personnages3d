@@ -3,7 +3,7 @@
 Pose Estimation with Intel Realsense Posenet Coral
 
 <p align="center">
-<img src="/doc/perso_kiwi.png" width="400" height="400"/>
+<img src="./doc/perso_kiwi.png" width="400" height="400"/>
 </p>
 
 
