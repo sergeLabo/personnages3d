@@ -6,6 +6,7 @@ Pose Estimation with Intel Realsense Posenet Coral
 <img src="./doc/perso_kiwi.png" width="672" height="400"/>
 </p>
 
+test geany
 
 ### Détection de 1 à 4 personnes
 * Inferface graphique réalisée avec Kivy
