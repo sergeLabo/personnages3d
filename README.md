@@ -6,14 +6,13 @@ Pose Estimation with Intel Realsense Posenet Coral
 <img src="./doc/perso_kiwi.png" width="672" height="400"/>
 </p>
 
-test geany
-
 ### Détection de 1 à 4 personnes
 * Inferface graphique réalisée avec Kivy
 * Suivi des personnes devant la caméra
 
 ### Installation
 #### Coral
+
 ```bash
 sudo apt install python3-venv
 python3 -m pip install --upgrade pip
@@ -29,10 +28,9 @@ curl -s https://packages.cloud.google.com/apt/doc/apt-key.gpg | sudo apt-key add
 sudo apt update
 sudo apt install edgetpu-compiler gasket-dkms libedgetpu1-std
 ```
-revoir
-python3-tflite-runtime
 
 #### RealSense
+
 ```bash
 sudo apt-key adv --keyserver keys.gnupg.net --recv-key F6E65AC044F831AC80A06380C8B3A55A6F3EFCDE || sudo apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 --recv-key F6E65AC044F831AC80A06380C8B3A55A6F3EFCDE
 sudo pluma /etc/apt/sources.list
@@ -42,7 +40,8 @@ sudo apt install -f librealsense2-utils
 ```
 
 #### Pycoral
-Le pycoral de pip (pypi) n'est pas celui de Coral.
+Le pycoral de pip (pypi.org) n'est pas celui de Coral.
+
 ```bash
 sudo apt install python3-pycoral python3-tflite-runtime
 ```
