@@ -42,10 +42,11 @@ class MainScreen(Screen):
         self.app = App.get_running_app()
 
         # Pour envoyer les valeurs au child_conn
-        self.perso = 4
+        self.perso = int(self.app.config.get('pose', 'person_nbr'))
         self.threshold = 0.5
         self.around = 1
-        self.distance = 0.2
+        self.distance = 200
+        self.stability = 3
         self.parent_conn = None
 
         # Pour ne lancer qu'une fois
@@ -53,39 +54,10 @@ class MainScreen(Screen):
         self.enable = False
 
         self.titre = "Personnages 3D"
+
+        Clock.schedule_once(self.set_toggle, 0.5)
+
         print("Initialisation du Screen MainScreen ok")
-
-    def run_personnages3d(self):
-        """Lance personnages3D.py"""
-
-        if not self.block:
-            # parent_conn pour envoyer à p, child_conn dans p reçoit
-            self.parent_conn, child_conn = Pipe()
-            p = Process(target=run_in_Process, args=(self.app.config, child_conn, ))
-            p.start()
-            self.block = 1
-            self.enable = True
-
-
-class MySettings(Screen):
-    """Some sliders"""
-
-    threshold = NumericProperty(0.5)
-    distance = NumericProperty(0.2)
-    around = NumericProperty(1)
-
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        print("Initialisation du Screen Settings")
-
-        self.app = App.get_running_app()
-
-        self.perso = int(self.app.config.get('pose', 'person_nbr'))
-        self.threshold = float(self.app.config.get('pose', 'threshold'))
-        self.around = int(self.app.config.get('pose', 'around'))
-        self.distance = float(self.app.config.get('pose', 'distance'))
-
-        Clock.schedule_once(self.set_toggle, 1)
 
     def set_toggle(self, dt):
         """Les objets graphiques ne sont pas encore créé pendant le init,
@@ -101,11 +73,47 @@ class MySettings(Screen):
         elif self.perso == 4:
             self.ids.p4.state = "down"
 
+    def set_personnages_number(self, num):
+        scr = self.app.screen_manager.get_screen('Main')
+        print(f"nombre de personnages = {num}")
+        self.perso = num
+        self.app.config.set('pose', 'person_nbr', num)
+        self.app.config.write()
+        if scr.parent_conn:
+            scr.parent_conn.send(['perso', self.perso])
+
+    def run_personnages3d(self):
+        """Lance personnages3D.py"""
+
+        if not self.block:
+            # parent_conn pour envoyer à p, child_conn dans p reçoit
+            self.parent_conn, child_conn = Pipe()
+            print("config dans MainScreen run_personnages3d", self.app.config)
+            p = Process(target=run_in_Process, args=(self.app.config, child_conn, ))
+            p.start()
+            self.block = 1
+            self.enable = True
+
+
+class MySettings(Screen):
+    """Some sliders"""
+
+    threshold = NumericProperty(0.5)
+    distance = NumericProperty(0.2)
+    around = NumericProperty(1)
+    stability = NumericProperty(8)
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        print("Initialisation du Screen Settings")
+
+        self.app = App.get_running_app()
+        self.threshold = float(self.app.config.get('pose', 'threshold'))
+        self.around = int(self.app.config.get('pose', 'around'))
+        self.distance = float(self.app.config.get('pose', 'distance'))
+        self.stability = int(self.app.config.get('pose', 'stability'))
+
     def do_slider(self, iD, instance, value):
-        """ threshold
-            <kivy.uix.slider.Slider object at 0x7f18c48502e8>
-            0.6200240384615385
-        """
 
         scr = self.app.screen_manager.get_screen('Main')
 
@@ -116,32 +124,36 @@ class MySettings(Screen):
             self.app.config.set('pose', 'threshold', self.threshold)
             # Sauvegarde dans le *.ini
             self.app.config.write()
+
             # Envoi de la valeur au process enfant
             if scr.parent_conn:
                 scr.parent_conn.send(['threshold', self.threshold])
 
         if iD == 'around':
             self.around = int(value)
+
             self.app.config.set('pose', 'around', self.around)
             self.app.config.write()
+
             if scr.parent_conn:
                 scr.parent_conn.send(['around', self.around])
 
         if iD == 'distance':
-            self.distance = round(value, 2)
+            self.distance = int(value)
             self.app.config.set('pose', 'distance', self.distance)
             self.app.config.write()
+
             if scr.parent_conn:
                 scr.parent_conn.send(['distance', self.distance])
 
-    def set_personnages_number(self, num):
-        scr = self.app.screen_manager.get_screen('Main')
-        print(f"nombre de personnages = {num}")
-        self.perso = num
-        self.app.config.set('pose', 'person_nbr', num)
-        self.app.config.write()
-        if scr.parent_conn:
-            scr.parent_conn.send(['perso', self.perso])
+        if iD == 'stability':
+            self.stability = int(value)
+            self.app.config.set('pose', 'stability', self.stability)
+            self.app.config.write()
+
+            if scr.parent_conn:
+                scr.parent_conn.send(['stability', self.stability])
+
 
 # Variable globale qui définit les écrans
 # L'écran de configuration est toujours créé par défaut
@@ -187,11 +199,17 @@ class Personnages3DApp(App):
                                 {   'threshold': 0.60,
                                     'around': 1,
                                     'person_nbr': 4,
-                                    'distance': 0.70})
+                                    'distance': 100,
+                                    'stability': 8,
+                                    'len_histo': 100})
 
         config.setdefaults( 'osc',
                                 {   'ip': '127.0.0.1',
                                     'port': 8003})
+
+        config.setdefaults( 'postprocessing',
+                                {   'centers': 1,
+                                    'all_points': 0})
 
         print("self.config peut maintenant être appelé")
 
@@ -232,7 +250,7 @@ class Personnages3DApp(App):
                     {"type": "title", "title": "Détection des squelettes"},
                         {   "type": "numeric",
                             "title": "Seuil de confiance pour la detection d'un keypoint",
-                            "desc": "0.01 à 1",
+                            "desc": "0.01 à 0.99",
                             "section": "pose", "key": "threshold"},
                         {   "type": "numeric",
                             "title": "Nombre de pixels autour du point pour le calcul de la profondeur",
@@ -244,8 +262,26 @@ class Personnages3DApp(App):
                             "section": "pose", "key": "person_nbr"},
                         {   "type": "numeric",
                             "title": "Distance pour suivi des personnes",
-                            "desc": "0.01 à 1",
-                            "section": "pose", "key": "distance"}
+                            "desc": "5 à 500",
+                            "section": "pose", "key": "distance"},
+                        {   "type": "numeric",
+                            "title": "Stabilité",
+                            "desc": "1 à 50",
+                            "section": "pose", "key": "stability"},
+                        {   "type": "numeric",
+                            "title": "Historique du suivi",
+                            "desc": "10 à 100",
+                            "section": "pose", "key": "len_histo"},
+
+                    {"type": "title", "title": "Post Processing"},
+                        {   "type": "numeric",
+                            "title": "Envoi des centres",
+                            "desc": "1 pour envoi, 0 sinon",
+                            "section": "postprocessing", "key": "centers"},
+                        {   "type": "numeric",
+                            "title": "Envoi de tous les points",
+                            "desc": "1 pour envoi, 0 sinon",
+                            "section": "postprocessing", "key": "all_points"}
                    ]"""
 
         # self.config est le config de build_config
@@ -254,24 +290,41 @@ class Personnages3DApp(App):
     def on_config_change(self, config, section, key, value):
         """Si modification des options, fonction appelée automatiquement
         menu = self.screen_manager.get_screen("Main")
+        Seul les rébglages à chaud sont définis ici !
         """
 
         if config is self.config:
             token = (section, key)
 
             if token == ('pose', 'threshold'):
-                print("threshold", value)
+                if value < 0: value = 0
+                if value > 0.99: value = 0.99
                 self.threshold = value
                 self.config.set('pose', 'threshold', value)
 
+            if token == ('pose', 'distance'):
+                if value < 5: value = 5
+                if value > 500: value = 500
+                self.distance = value
+                self.config.set('pose', 'distance', value)
+
+            if token == ('pose', 'around'):
+                if value < 1: value = 1
+                if value > 5: value = 5
+                self.around = value
+                self.config.set('pose', 'around', value)
+
+            if token == ('pose', 'stability'):
+                if value < 1: value = 1
+                if value > 50: value = 50
+                self.stability = value
+                self.config.set('pose', 'stability', value)
 
     def go_mainscreen(self):
         """Retour au menu principal depuis les autres écrans."""
-
         self.screen_manager.current = ("Main")
 
     def do_quit(self):
-
         print("Je quitte proprement")
 
         # Fin du processus fils
@@ -284,6 +337,7 @@ class Personnages3DApp(App):
 
         # Extinction forcée de tout, si besoin
         os._exit(0)
+
 
 
 if __name__ == '__main__':

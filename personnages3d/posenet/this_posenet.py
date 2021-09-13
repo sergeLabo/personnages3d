@@ -54,8 +54,7 @@ class ThisPosenet:
         try:
             self.engine = PoseEngine(model, mirror=False)
         except:
-            print(f"Pas de Stick Coral connecté ou",
-                  f"il faut être sur (X)ubuntu 20.04")
+            print(f"Pas de Stick Coral connecté")
             os._exit(0)
 
     def get_outputs(self, color_arr):

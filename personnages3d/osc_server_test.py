@@ -1,33 +1,61 @@
 
+"""
+Ce serveur reçoit les datas envoyée en OSC par personnage3D,
+pour essai.
+"""
+
+
 from time import sleep
 from oscpy.server import OSCThreadServer
 
 
-def on_tag(*args):
-    dico = {}
-    tag = int(args[0].decode('utf-8')[1:])
-    dico[tag] = args[1:]
-    print(dico)
+dico = {0: {},
+        1: {},
+        2: {},
+        3: {}}
+
+def on_points(*args):
+    # arg (b'/1_0', 0.285, -0.066, 0.871)
+
+    resp = args[0].decode('utf-8')
+    tag = int(resp[3:])
+    i = int(resp[1])
+    dico[i][tag] = args[1:]
+    print("dico", dico)
+
 
 def default_handler(*args):
     print("default_handler", args)
 
-# #def on_bundle(*args):
-    # #print(args)
+centers =  {0: {},
+            1: {},
+            2: {},
+            3: {}}
+
+def on_center(*args):
+    resp = args[0].decode('utf-8')
+    # print(resp) /0/center
+    i = int(resp[1])
+    centers[i] = args[1:]
+    print("centers", centers)
+
 
 server = OSCThreadServer()
 server.listen(b'localhost', port=8003, default=True)
-# #server.default_handler = default_handler
+server.default_handler = default_handler
 
 for j in range(4):
-    for i in range(10):
-        tag = ('/' + str(j) + '_'+ str(i)).encode('utf-8')
-        server.bind(tag, on_tag, get_address=True)
+    for i in range(17):
+        tag = ('/' + str(j) + '/' + str(i)).encode('utf-8')
+        server.bind(tag, on_points, get_address=True)
 
-# #server.bind('/bundle', on_bundle, get_address=True)
+for k in range(4):
+    tag = ('/' + str(k) + '/' + 'center').encode('utf-8')
+    server.bind(tag, on_center, get_address=True)
 
 while 1:
     sleep(0.1)
+
 """
 [
 [b'/0_0', [-0.2605190575122833, -0.11665435880422592, 1.3580000400543213]],

@@ -1,11 +1,12 @@
 #:kivy 2.0.0
 
+
 <MainScreen>:
     BoxLayout: # une boite pour tout
         orientation: 'vertical'
         canvas:
             Color:
-                rgb: 1, 1, 1  # Fond blanc
+                rgb: 1.2, 0, 1.2  # Fond blanc
             Rectangle:
                 size: self.size
                 pos: self.pos
@@ -42,7 +43,47 @@
             BoxLayout:
                 size_hint_y: 0.4
 
-        BoxLayout: #
+
+        BoxLayout: # une boite pour espacer
+            orientation: 'horizontal'
+            size_hint_y: 0.05
+
+
+        BoxLayout: # une boite pour les toggle
+            orientation: 'horizontal'
+            size_hint_y: 0.10
+            ToggleButton:
+                text:'1 Personnages'
+                group: 'personne'
+                id: p1
+                on_press: root.set_personnages_number(1)
+                state: 'normal'
+            ToggleButton:
+                text:'2 Personnages'
+                group: 'personne'
+                id: p2
+                on_press: root.set_personnages_number(2)
+                state: 'normal'
+            ToggleButton:
+                text:'3 Personnages'
+                group: 'personne'
+                id: p3
+                on_press: root.set_personnages_number(3)
+                state: 'normal'
+            ToggleButton:
+                text:'4 Personnages'
+                group: 'personne'
+                id: p4
+                on_press: root.set_personnages_number(4)
+                state: 'normal'
+
+        BoxLayout: # une boite pour espacer
+            orientation: 'horizontal'
+            size_hint_y: 0.05
+
+
+
+        BoxLayout: # boutons en bas
             orientation: 'horizontal'
             size_hint_y: 0.2
             Button:  # Settings
@@ -64,6 +105,7 @@
                 font_size: '22dp'
                 on_release: app.do_quit()
 
+
 <MySettings>:
     BoxLayout: # une boite pour tout
         orientation: 'vertical'
@@ -71,7 +113,8 @@
         BoxLayout: # une boite pour slider et toggle
             orientation: 'vertical'
             size_hint_y: 0.80
-            BoxLayout: # une boite texte et affichage
+
+            BoxLayout: # une boite texte et affichage threshold
                 orientation: 'horizontal'
                 size_hint_y: 0.10
                 Label:  # threshold
@@ -86,11 +129,12 @@
                 size_hint_y: 0.10
                 id: threshold
                 orientation: 'horizontal'
-                range: 0.01, 1
+                range: 0.01, 0.99
                 value: root.threshold
                 value_position: root.threshold
                 on_value: root.do_slider('threshold', *args)
-            BoxLayout: # une boite texte et affichage
+
+            BoxLayout: # une boite texte et affichage distance
                 size_hint_y: 0.10
                 orientation: 'horizontal'
                 Label:  # distance
@@ -101,15 +145,16 @@
                     text: str(root.distance)
                     font_size: '36dp'
                     color: (0.5, 0.5, 0, 1)
-            Slider:
+            Slider: # distance
                 size_hint_y: 0.10
                 id: distance
                 orientation: 'horizontal'
-                range: 0.01, 1
+                range: 5, 500
                 value: root.distance
                 value_position: root.threshold
                 on_value: root.do_slider('distance', *args)
-            BoxLayout: # une boite texte et affichage
+
+            BoxLayout: # une boite texte et affichage around
                 size_hint_y: 0.10
                 orientation: 'horizontal'
                 Label:  # around
@@ -120,7 +165,7 @@
                     text: str(root.around)
                     font_size: '36dp'
                     color: (0.5, 0.5, 0, 1)
-            Slider:
+            Slider:  # around
                 size_hint_y: 0.10
                 id: around
                 orientation: 'horizontal'
@@ -129,37 +174,29 @@
                 value_position: root.around
                 on_value: root.do_slider('around', *args)
 
+            BoxLayout: # une boite texte et affichage stability
+                size_hint_y: 0.10
+                orientation: 'horizontal'
+                Label:  # stability
+                    text: 'Stabilité: valeurs faibles: instable, fortes: stable'
+                    font_size: '24dp'
+                    color: (0.5, 0.5, 0, 1)
+                Label:  # stability
+                    text: str(root.stability)
+                    font_size: '36dp'
+                    color: (0.5, 0.5, 0, 1)
+            Slider:  # stability
+                size_hint_y: 0.10
+                id: stability
+                orientation: 'horizontal'
+                range: 1, 50
+                value: root.stability
+                value_position: root.stability
+                on_value: root.do_slider('stability', *args)
+
             BoxLayout: # une boite pour espacer
                 orientation: 'horizontal'
                 size_hint_y: 0.10
-
-            BoxLayout: # une boite pour les toggle
-                orientation: 'horizontal'
-                size_hint_y: 0.10
-                ToggleButton:
-                    text:'1 Personnages'
-                    group: 'personne'
-                    id: p1
-                    on_press: root.set_personnages_number(1)
-                    state: 'normal'
-                ToggleButton:
-                    text:'2 Personnages'
-                    group: 'personne'
-                    id: p2
-                    on_press: root.set_personnages_number(2)
-                    state: 'normal'
-                ToggleButton:
-                    text:'3 Personnages'
-                    group: 'personne'
-                    id: p3
-                    on_press: root.set_personnages_number(3)
-                    state: 'normal'
-                ToggleButton:
-                    text:'4 Personnages'
-                    group: 'personne'
-                    id: p4
-                    on_press: root.set_personnages_number(4)
-                    state: 'normal'
 
         BoxLayout: # une boite pour espacer
             orientation: 'horizontal'
