@@ -107,6 +107,7 @@ class MySettings(Screen):
         super().__init__(**kwargs)
         print("Initialisation du Screen Settings")
 
+
         self.app = App.get_running_app()
         self.threshold = float(self.app.config.get('pose', 'threshold'))
         self.around = int(self.app.config.get('pose', 'around'))

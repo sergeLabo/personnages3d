@@ -12,18 +12,18 @@ Envoi de toutes les coordonnées de tous les points en OSC.
 
 import os
 from time import time, sleep
-from threading import Thread
+from datetime import datetime
 import json
 
 import numpy as np
 import cv2
-import pyrealsense2 as rs
 
+
+import pyrealsense2 as rs
 from posenet.this_posenet import ThisPosenet
 from posenet.pose_engine import EDGES
 
 from myconfig import MyConfig
-from post_capture import PostCaptureProcessing
 
 
 COLORS = [(0, 0, 255), (0, 255, 0), (255, 255, 0), (255, 0, 255)]
@@ -109,10 +109,7 @@ class Personnage:
         self.historic[0] = [0]*self.len_histo
         self.historic[1] = [0]*self.len_histo
         self.historic[2] = [0]*self.len_histo
-        self.stability = 0
 
-        # Distance pour affichage seulement
-        self.gap = 100000
 
     def add_historic(self, centre):
         """Ajout dans la pile, suppr du premier"""
@@ -135,14 +132,11 @@ class Personnages3D:
     def __init__(self, **kwargs):
         """Les paramètres sont définis dans le fichier personnages3d.ini"""
 
-        self.stability_on = 0
+        # Enregistrement dans un json
+        self.all_data = []
 
         self.config = kwargs
         print(f"Configuration:\n{self.config}\n\n")
-
-        # 1 pour avoir les print et pour enregistrer
-        self.debug = 0
-        self.print_data = {}
 
         # Seuil de confiance de reconnaissance du squelette
         self.threshold = float(self.config['pose']['threshold'])
@@ -153,10 +147,7 @@ class Personnages3D:
         # Distance de rémanence pour attribution des squelettes
         self.distance = float(self.config['pose']['distance'])
 
-        # Stabilité
-        self.stability = int(self.config['pose']['stability'])
-
-        # Nombre de personnes à capter
+        # Nombre deif k == 32:  # space personnes à capter
         self.person_nbr = min(int(self.config['pose']['person_nbr']), 4)
 
         self.whos = [0]*self.person_nbr
@@ -170,12 +161,8 @@ class Personnages3D:
         # Plein écran de la fenêtre OpenCV
         self.full_screen = int(self.config['camera']['full_screen'])
 
-        # Le client va utiliser l'ip et port du *.ini
-        self.post_capture = PostCaptureProcessing(**self.config)
-
         self.create_window()
         self.set_pipeline()
-
         self.this_posenet = ThisPosenet(self.width, self.height)
 
         # Toutes les datas des personnages dans un dict self.personnages
@@ -185,7 +172,6 @@ class Personnages3D:
         self.skelet_nbr = 0
         self.new_centers = None
 
-        # GUI
         self.loop = 1
 
     def create_window(self):
@@ -209,6 +195,7 @@ class Personnages3D:
             cv2.setWindowProperty(  'vue du dessus',
                                     cv2.WND_PROP_FULLSCREEN,
                                     cv2.WINDOW_NORMAL)
+
     def set_pipeline(self):
         """Crée le flux d'image avec la caméra D455
 
@@ -284,6 +271,7 @@ class Personnages3D:
                 Récupération de tous les squelettes
                 Definition de who
         """
+
         persos_2D, persos_3D = None, None
         # Récupération de tous les squelettes
         if outputs:
@@ -293,7 +281,7 @@ class Personnages3D:
             if persos_2D:
                 # Ajout de la profondeur pour 3D
                 persos_3D = self.get_persos_3D(persos_2D)
-
+                self.all_data.append([persos_2D, persos_3D])
 
         # Récup de who, apply to self.perso
         if persos_3D:
@@ -305,10 +293,7 @@ class Personnages3D:
             else:
                 self.who_is_who(persos_3D)
 
-            if self.stability_on:
-                self.apply_to_personnages_with_stability(persos_2D, persos_3D)
-            else:
-                self.apply_to_personnages(persos_2D, persos_3D)
+            self.apply_to_personnages(persos_2D, persos_3D)
 
             # Affichage
             self.draw_all_poses()
@@ -424,44 +409,6 @@ class Personnages3D:
             pass
 
         return whos, TODO
-
-    def apply_to_personnages_with_stability(self, persos_2D, persos_3D):
-        """
-        Dans perso.histo, affichage de perso si les 3 derniers sont valides
-            soit pas de 100000 dans les 3 derniers, 3 = stability
-        Si un perso est valide, et que pas de valeur en cours, utilisation de la
-            précédente.
-        Un perso est valide si perso.stability == 3
-        Suite à voir ...
-        """
-        for i in range(self.person_nbr):
-            # Perso bien suivi
-            if self.whos[i] is not None:
-                if self.personnages[i].stability == self.stability:
-                    self.personnages[i].who = self.whos[i]
-                    self.personnages[i].xys = persos_2D[self.whos[i]]
-                    self.personnages[i].points_3D = persos_3D[self.whos[i]]
-                    c = get_center(persos_3D[self.whos[i]])
-                    self.personnages[i].center = c
-                    self.personnages[i].add_historic(c)
-                    self.personnages[i].stability += 1
-                else:
-                    self.personnages[i].stability += 1
-
-                if self.personnages[i].stability > self.stability:
-                    self.personnages[i].stability = self.stability
-
-            # Pas de data sur cette frame
-            else:
-                # Le perso est valide
-                if self.personnages[i].stability == 3:
-                    self.personnages[i].add_historic(self.personnages[i].center)
-                    self.personnages[i].stability -= 1
-                else:
-                    self.personnages[i].who = None
-                    self.personnages[i].xys = None
-                    self.personnages[i].points_3D = None
-                    self.personnages[i].add_historic(self.personnages[i].center)
 
     def apply_to_personnages(self, persos_2D, persos_3D):
         """ whos du type [1, 0, None, 2]
@@ -607,22 +554,6 @@ class Personnages3D:
         y = 100
         self.draw_texte(text, x, y, COLORS[2])
 
-        text = "Stability:  " + str(self.stability)
-        x = 30
-        y = 150
-        self.draw_texte(text, x, y, COLORS[1])
-
-        text = "Gap:"
-        x = 800
-        y = 50
-        self.draw_texte(text, x, y, (125,125,125))
-
-        for i in range(self.person_nbr):
-            text = str(self.personnages[i].gap)
-            x = 800
-            y = 100 + 50*i
-            self.draw_texte(text, x, y, COLORS[i])
-
     def draw_texte(self, depth, x, y, color):
         """Affichage d'un texte"""
         cv2.putText(self.color_arr,             # image
@@ -652,11 +583,6 @@ class Personnages3D:
         cv2.circle(self.black, (x, y), 10, (100, 100, 100), -1)
         cv2.circle(self.black, (x, y), 12, color=color, thickness=2)
 
-    def post_capture_update(self):
-        """Traitement post capture"""
-
-        self.post_capture.update(self.personnages)
-
     def run(self, conn):
         """Boucle infinie, quitter avec Echap dans la fenêtre OpenCV"""
 
@@ -668,6 +594,7 @@ class Personnages3D:
 
         while self.loop:
             nbr += 1
+
             frames = self.pipeline.wait_for_frames(timeout_ms=80)
 
             # Align the depth frame to color frame
@@ -687,9 +614,6 @@ class Personnages3D:
             # Recherche des personnages captés
             self.main_frame(outputs)
 
-            # Post
-            self.post_capture_update()
-
             # Affichage de l'image
             cv2.imshow('color', self.color_arr)
             cv2.imshow('vue du dessus', self.black)
@@ -701,8 +625,12 @@ class Personnages3D:
 
             k = cv2.waitKey(1)
 
+            # Enrergistrement si s
+            if k == 115:  # s
+                save(self.all_data)
+
             # Space pour full screen or not
-            if k == 32:  # space
+            elif k == 32:  # space
                 if self.full_screen == 1:
                     self.full_screen = 0
                 elif self.full_screen == 0:
@@ -710,7 +638,7 @@ class Personnages3D:
                 self.set_window()
 
             # Pour quitter
-            if k == 27:  # Esc
+            elif k == 27:  # Esc
                 break
 
         # Du OpenCV propre
@@ -738,6 +666,15 @@ class Personnages3D:
                     self.personnages[i].stability = self.stability
             sleep(0.001)
 
+
+
+def save(all_data):
+    dt_now = datetime.now()
+    dt = dt_now.strftime("%Y_%m_%d_%H_%M")
+    fichier = f"./json/cap_{dt}.json"
+    with open(fichier, "w") as fd:
+        fd.write(json.dumps(all_data))
+        print(f"{fichier} enregistré.")
 
 
 def get_distance(p1, p2):
@@ -796,12 +733,6 @@ def main():
 
     # On tourne, silence, caméra, action !!!
     conn = None
-    p3d.run(conn)
-
-
-def run_in_Process(config, conn):
-
-    p3d = Personnages3D(**config)
     p3d.run(conn)
 
 

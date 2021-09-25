@@ -12,18 +12,22 @@ Envoi de toutes les coordonnées de tous les points en OSC.
 
 import os
 from time import time, sleep
+from datetime import datetime
 from threading import Thread
 import json
 
 import numpy as np
 import cv2
-import pyrealsense2 as rs
 
-from posenet.this_posenet import ThisPosenet
-from posenet.pose_engine import EDGES
+SAVE = 1
+
+TEST = 0
+if not TEST:
+    import pyrealsense2 as rs
+    from posenet.this_posenet import ThisPosenet
+    from posenet.pose_engine import EDGES
 
 from myconfig import MyConfig
-from post_capture import PostCaptureProcessing
 
 
 COLORS = [(0, 0, 255), (0, 255, 0), (255, 255, 0), (255, 0, 255)]
@@ -135,7 +139,15 @@ class Personnages3D:
     def __init__(self, **kwargs):
         """Les paramètres sont définis dans le fichier personnages3d.ini"""
 
-        self.stability_on = 0
+        # Enregistrement dans un json
+        self.all_data = []
+
+        # Avec utilisation d'un json
+        if TEST:
+            fichier = './json/cap_2021_09_24_11_33.json'
+            self.json_data = read_json(fichier)
+
+        self.stability_on = 0  # marche pas
 
         self.config = kwargs
         print(f"Configuration:\n{self.config}\n\n")
@@ -156,7 +168,7 @@ class Personnages3D:
         # Stabilité
         self.stability = int(self.config['pose']['stability'])
 
-        # Nombre de personnes à capter
+        # Nombre deif k == 32:  # space personnes à capter
         self.person_nbr = min(int(self.config['pose']['person_nbr']), 4)
 
         self.whos = [0]*self.person_nbr
@@ -170,13 +182,11 @@ class Personnages3D:
         # Plein écran de la fenêtre OpenCV
         self.full_screen = int(self.config['camera']['full_screen'])
 
-        # Le client va utiliser l'ip et port du *.ini
-        self.post_capture = PostCaptureProcessing(**self.config)
-
         self.create_window()
-        self.set_pipeline()
 
-        self.this_posenet = ThisPosenet(self.width, self.height)
+        if not TEST:
+            self.set_pipeline()
+            self.this_posenet = ThisPosenet(self.width, self.height)
 
         # Toutes les datas des personnages dans un dict self.personnages
         self.personnages = []
@@ -209,6 +219,7 @@ class Personnages3D:
             cv2.setWindowProperty(  'vue du dessus',
                                     cv2.WND_PROP_FULLSCREEN,
                                     cv2.WINDOW_NORMAL)
+
     def set_pipeline(self):
         """Crée le flux d'image avec la caméra D455
 
@@ -284,6 +295,7 @@ class Personnages3D:
                 Récupération de tous les squelettes
                 Definition de who
         """
+
         persos_2D, persos_3D = None, None
         # Récupération de tous les squelettes
         if outputs:
@@ -293,7 +305,8 @@ class Personnages3D:
             if persos_2D:
                 # Ajout de la profondeur pour 3D
                 persos_3D = self.get_persos_3D(persos_2D)
-
+                if SAVE:
+                    self.all_data.append([persos_2D, persos_3D])
 
         # Récup de who, apply to self.perso
         if persos_3D:
@@ -313,6 +326,25 @@ class Personnages3D:
             # Affichage
             self.draw_all_poses()
             self.draw_all_textes()
+            self.draw_all_personnages()
+
+    def main_frame_test(self, persos_2D, persos_3D):
+
+        # Récup de who, apply to self.perso
+        if persos_3D:
+            self.skelet_nbr = min(len(persos_3D), 4)
+
+            # Si détection que d'un seul perso
+            if self.person_nbr == 1:
+                self.whos = self.get_body_in_center(persos_3D)
+            else:
+                self.who_is_who(persos_3D)
+
+            if self.stability_on:
+                self.apply_to_personnages_with_stability(persos_2D, persos_3D)
+            else:
+                self.apply_to_personnages(persos_2D, persos_3D)
+
             self.draw_all_personnages()
 
     def update_centers(self, persos_3D):
@@ -668,30 +700,37 @@ class Personnages3D:
 
         while self.loop:
             nbr += 1
-            frames = self.pipeline.wait_for_frames(timeout_ms=80)
+            if not TEST:
+                frames = self.pipeline.wait_for_frames(timeout_ms=80)
 
-            # Align the depth frame to color frame
-            aligned_frames = self.align.process(frames)
+                # Align the depth frame to color frame
+                aligned_frames = self.align.process(frames)
 
-            color = aligned_frames.get_color_frame()
-            self.depth_frame = aligned_frames.get_depth_frame()
+                color = aligned_frames.get_color_frame()
+                self.depth_frame = aligned_frames.get_depth_frame()
 
-            if not self.depth_frame and not color:
-                continue
+                if not self.depth_frame and not color:
+                    continue
 
-            color_data = color.as_frame().get_data()
-            self.color_arr = np.asanyarray(color_data)
+                color_data = color.as_frame().get_data()
+                self.color_arr = np.asanyarray(color_data)
 
-            outputs = self.this_posenet.get_outputs(self.color_arr)
+                outputs = self.this_posenet.get_outputs(self.color_arr)
 
-            # Recherche des personnages captés
-            self.main_frame(outputs)
+                # Recherche des personnages captés
+                self.main_frame(outputs)
 
-            # Post
-            self.post_capture_update()
+            else:
+                if nbr < len(self.json_data):
+                    persos_2D = self.json_data[nbr][0]
+                    persos_3D = self.json_data[nbr][1]
+                    self.main_frame_test(persos_2D, persos_3D)
+                else:
+                    os._exit(0)
 
             # Affichage de l'image
-            cv2.imshow('color', self.color_arr)
+            if not TEST:
+                cv2.imshow('color', self.color_arr)
             cv2.imshow('vue du dessus', self.black)
 
             # Calcul du FPS, affichage toutes les 10 s
@@ -699,10 +738,18 @@ class Personnages3D:
                 # #print("FPS =", int(nbr/10))
                 t0, nbr = time(), 0
 
-            k = cv2.waitKey(1)
+            if not TEST:
+                k = cv2.waitKey(1)
+            else:
+                k = cv2.waitKey(500)
+
+            # Enrergistrement si s
+            if k == 115:  # s
+                if SAVE:
+                    save(self.all_data)
 
             # Space pour full screen or not
-            if k == 32:  # space
+            elif k == 32:  # space
                 if self.full_screen == 1:
                     self.full_screen = 0
                 elif self.full_screen == 0:
@@ -710,7 +757,7 @@ class Personnages3D:
                 self.set_window()
 
             # Pour quitter
-            if k == 27:  # Esc
+            elif k == 27:  # Esc
                 break
 
         # Du OpenCV propre
@@ -738,6 +785,25 @@ class Personnages3D:
                     self.personnages[i].stability = self.stability
             sleep(0.001)
 
+
+
+def save(all_data):
+    dt_now = datetime.now()
+    dt = dt_now.strftime("%Y_%m_%d_%H_%M")
+    fichier = f"./json/cap_{dt}.json"
+    with open(fichier, "w") as fd:
+        fd.write(json.dumps(all_data))
+        print(f"{fichier} enregistré.")
+
+
+def read_json(fichier):
+    try:
+        with open(fichier) as f:
+            data = json.load(f)
+    except:
+        data = None
+        print("Fichier inexistant ou impossible à lire:")
+    return data
 
 
 def get_distance(p1, p2):

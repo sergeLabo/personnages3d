@@ -1,6 +1,7 @@
 # les miens
 old/
 *.geany
+*.project
 mon_env/
 posenet_lib/
 models/
