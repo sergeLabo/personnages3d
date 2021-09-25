@@ -281,11 +281,6 @@ class Personnages3D:
         cv2.circle(self.black, (x, y), 10, (100, 100, 100), -1)
         cv2.circle(self.black, (x, y), 12, color=color, thickness=2)
 
-    def post_capture_update(self):
-        """Traitement post capture"""
-
-        self.post_capture.update(self.personnages)
-
     def run(self, conn):
         """Boucle infinie, quitter avec Echap dans la fenêtre OpenCV"""
 
