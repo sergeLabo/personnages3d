@@ -1,9 +1,11 @@
 
 
 """
-Echap pour finir proprement le script
-
 Reconnaissance des personnages à partir d'un json
+
+Vous ne devez modifier que ce fichier
+Installation: voir le readme
+
 """
 
 FICHIER = './json/cap_2021_09_24_11_33.json'
@@ -15,7 +17,7 @@ from time import time, sleep
 import numpy as np
 import cv2
 
-from myconfig import MyConfig
+from my_config import MyConfig
 
 
 COLORS = [(0, 0, 255), (0, 255, 0), (255, 255, 0), (255, 0, 255)]
@@ -89,42 +91,14 @@ class Personnages3D:
 
         self.loop = 1
 
-    def get_body_in_center(self, persos_3D):
-        """Recherche du perso le plus près du centre, pour 1 seul perso"""
-
-        who = []
-        # Tous les décalage sur x
-        all_x_decal = []
-
-        if persos_3D:
-            for perso in persos_3D:
-                # Le x est la 1ère valeur dans perso
-                if perso:
-                    decal = get_moyenne(perso, 0)
-                    if decal:
-                        all_x_decal.append(decal)
-                    else:
-                        all_x_decal.append(100000)
-
-        if all_x_decal:
-            all_x_decal_sorted = sorted(all_x_decal)
-            decal_mini  = all_x_decal_sorted[0]
-        who.append(all_x_decal.index(decal_mini))
-
-        return who
-
     def main_frame_test(self, persos_2D, persos_3D):
 
         # Récup de who, apply to self.perso
         if persos_3D:
+            # Ceci n'est pas une bonne idée, les bons pourrait etre dans les supprimés
             self.skelet_nbr = min(len(persos_3D), 4)
 
-            # Si détection que d'un seul perso
-            if self.person_nbr == 1:
-                self.whos = self.get_body_in_center(persos_3D)
-            else:
-                self.who_is_who(persos_3D)
-
+            self.who_is_who(persos_3D)
             self.apply_to_personnages(persos_2D, persos_3D)
             self.draw_all_personnages()
 
