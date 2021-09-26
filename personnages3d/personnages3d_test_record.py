@@ -105,7 +105,6 @@ class Personnage:
 
         # 10x et 10y et 10z soit 1 seconde
         self.historic = [0]*3
-
         self.historic[0] = [0]*self.len_histo
         self.historic[1] = [0]*self.len_histo
         self.historic[2] = [0]*self.len_histo
@@ -281,7 +280,7 @@ class Personnages3D:
             if persos_2D:
                 # Ajout de la profondeur pour 3D
                 persos_3D = self.get_persos_3D(persos_2D)
-                self.all_data.append([persos_2D, persos_3D])
+                self.all_data.append(persos_3D)
 
         # Récup de who, apply to self.perso
         if persos_3D:

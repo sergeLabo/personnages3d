@@ -47,4 +47,7 @@ Par exemple, si 3 personnes captées, il peut y avoir une liste de 0, 1, 2, 3 vo
 Objectif:
 Appliquer un squelette à la même personne, cela se traduit par une couleur constante dans la vue de dessus. Par exemple, la personne rouge doit toujours rester rouge pendant ses déplacements
 
+### Quelques explications sur le script
 
+* Utilise le json défini en ligne 11
+* La tempo de défilement des frames est réglable dans run() avec cv2.waitKey(tempo) tempo en ms

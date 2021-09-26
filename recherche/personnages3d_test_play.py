@@ -8,7 +8,7 @@ Installation: voir le readme
 
 """
 
-FICHIER = './json/cap_2021_09_24_11_33.json'
+FICHIER = './json/cap_1.json'
 
 import os
 import json
@@ -16,8 +16,6 @@ from time import time, sleep
 
 import numpy as np
 import cv2
-
-from my_config import MyConfig
 
 
 COLORS = [(0, 0, 255), (0, 255, 0), (255, 255, 0), (255, 0, 255)]
@@ -29,98 +27,70 @@ class Personnage:
     et de les reset-er.
     """
 
-    def __init__(self, **kwargs):
-        self.config = kwargs
-        self.len_histo = int(self.config['pose']['len_histo'])
+    def __init__(self):
         self.reset()
 
     def reset(self):
         self.who = None
-        self.xys = None
         self.points_3D = None
-        self.center = [100000]*3
-
-        # 10x et 10y et 10z soit 1 seconde
-        self.historic = [0]*3
-
-        self.historic[0] = [0]*self.len_histo
-        self.historic[1] = [0]*self.len_histo
-        self.historic[2] = [0]*self.len_histo
-        self.stability = 0
-
-    def add_historic(self, centre):
-        """Ajout dans la pile, suppr du premier"""
-
-        for i in range(3):
-            self.historic[i].append(centre[i])
-            del self.historic[i][0]
+        # Les centres sont dans le plan horizontal
+        self.center = [100000]*2
+        # Numéro de la frame de la dernière mise à jour
+        self.last_update = 0
+        self.stable = 0
 
 
 
 class Personnages3D:
 
-    def __init__(self, **kwargs):
-        """Les paramètres sont définis dans le fichier personnages3d.ini"""
+    def __init__(self):
+        """Unité = mm"""
 
+        # Distance de rémanence pour attribution des squelettes
+        self.distance = 200
 
         self.json_data = read_json(FICHIER)
 
-        self.config = kwargs
-        print(f"Configuration:\n{self.config}\n\n")
-
-        # Distance de rémanence pour attribution des squelettes
-        self.distance = float(self.config['pose']['distance'])
-
-
-        # Nombre deif k == 32:  # space personnes à capter
-        self.person_nbr = min(int(self.config['pose']['person_nbr']), 4)
-
-        self.whos = [0]*self.person_nbr
+        self.whos = [0]*4
 
         # Fenêtre pour la vue du dessus
         cv2.namedWindow('vue du dessus', cv2.WND_PROP_FULLSCREEN)
         self.black = np.zeros((720, 1280, 3), dtype = "uint8")
 
-
         # Toutes les datas des personnages dans un dict self.personnages
         self.personnages = []
-        for i in range(self.person_nbr):
-            self.personnages.append(Personnage(**self.config))
+        for i in range(4):
+            self.personnages.append(Personnage())
         self.skelet_nbr = 0
         self.new_centers = None
 
         self.loop = 1
+        # Numéro de la frame
+        self.nbr = 0
 
-    def main_frame_test(self, persos_2D, persos_3D):
+    def main_frame_test(self, skelet_3D):
+        """skelet_3D sont les squelettes en 2D et 3D"""
 
-        # Récup de who, apply to self.perso
-        if persos_3D:
-            # Ceci n'est pas une bonne idée, les bons pourrait etre dans les supprimés
-            self.skelet_nbr = min(len(persos_3D), 4)
+        if skelet_3D:
+            # Nombre de squelettes
+            self.skelet_nbr = len(skelet_3D)
 
-            self.who_is_who(persos_3D)
-            self.apply_to_personnages(persos_2D, persos_3D)
+            self.who_is_who(skelet_3D)
+            self.apply_to_personnages(skelet_3D)
             self.draw_all_personnages()
 
-    def update_centers(self, persos_3D):
-        """
-        last_centers = liste des centres tirée de l'historique des piles de centre
-        self.new_centers = liste des centres des squelettes de la frame
-        """
+        else:
+            print(f"\nPas de squelette  ------------------------>",
+               f"             Frame --->",
+               f"{self.nbr}")
 
-        self.last_centers = []
-        for i in range(self.person_nbr):
-            self.last_centers.append(self.personnages[i].center)
-
-        self.new_centers = []
-        for i in range(self.skelet_nbr):
-            self.new_centers.append(get_center(persos_3D[i]))
-
-    def who_is_who(self, persos_3D):
+    def who_is_who(self, skelet_3D):
 
         # Préliminaire
-        self.update_centers(persos_3D)
-        print("\nNombre de squelette  ------------------------>", self.skelet_nbr)
+        self.update_centers(skelet_3D)
+        print(f"\nNombre de squelette  ------------------------>",
+               f"{self.skelet_nbr}         Frame --->",
+               f"{self.nbr}")
 
         # Parcours des squelettes pour calculer les distances par rapport
         # aux centres des personnages
@@ -129,7 +99,7 @@ class Personnages3D:
         for skel in range(self.skelet_nbr):
             dists[skel] = []
             # Recherche des perso proche de ce skelelet
-            for perso in range(self.person_nbr):
+            for perso in range(4):
                 dist = get_distance(self.new_centers[skel], self.last_centers[perso])
                 if dist > 100000:
                     dist = 100000
@@ -141,41 +111,19 @@ class Personnages3D:
         whos, TODO = self.attribution_with_nearest(dists)
         self.whos = self.default_attribution(whos, TODO)
 
-    def default_attribution(self, whos, TODO):
-        """ Attribution par défaut si pas attribué avant
-
-        whos: [1, None, None, None] TODO: 2
-
-        objectif --> [1, 0, 2, None]
-
-        liste des déjà attribués: done = [1]
-
-        à attribuer 0 et 2:
-            possible = [0, 2, 3]
-            moins whos
-            liste des numéros à attribuer: dispo = [0, 2]
-
-        len(dispo) = TODO
-
+    def update_centers(self, skelet_3D):
+        """
+        last_centers = liste des centres tirée des centres des personnages
+        self.new_centers = liste des centres des squelettes de la frame
         """
 
-        done = [x for x in whos if x is not None]
-        dispo = [x for x in range(self.person_nbr) if x not in whos]
+        self.last_centers = []
+        for i in range(4):
+            self.last_centers.append(self.personnages[i].center)
 
-        print("whos avec nearest:", whos, "TODO:", TODO, "done:", done, "dispo", dispo)
-
-        # Attribution importante
-        d = 0
-        while TODO > 0:
-            for i, who in enumerate(whos):
-                if who is None:
-                    whos[i] = dispo[d]
-                    TODO -= 1
-                    d += 1
-                    break
-
-        print("whos final:", whos)
-        return whos
+        self.new_centers = []
+        for i in range(self.skelet_nbr):
+            self.new_centers.append(get_center(skelet_3D[i]))
 
     def attribution_with_nearest(self, dists):
         """ Attribution avec le plus près
@@ -189,8 +137,7 @@ class Personnages3D:
         whos: [1, 0, None, None] TODO: 0
         whos final [1, 0, None, None]
         """
-        whos = [None]*self.person_nbr
-        gaps = []
+        whos = [None]*4
         # Nombre de squelette qui reste à attribuer
         TODO = self.skelet_nbr
         for i in range(self.skelet_nbr):
@@ -200,80 +147,106 @@ class Personnages3D:
                 # Position du mini dans la liste
                 index = dists[i].index(mini)
                 if mini < self.distance:
-                    gaps.append(mini)
                     whos[index] = i
                     TODO -= 1
-        # Ne sert que pour l'affichage
-        try:
-            for i in range(len(gaps)):
-                self.personnages[whos[i]].gap = gaps[i]
-        except:
-            pass
 
         return whos, TODO
 
-    def apply_to_personnages(self, persos_2D, persos_3D):
+    def default_attribution(self, whos, TODO):
+        """ Attribution par défaut si pas attribué avant
+
+        3 squelttes
+        whos: [1, None, None, None] --> TODO: 2
+        On doit trouver --> [1, 0, 2, None]
+
+        liste des déjà attribués: done = [1]
+        à attribuer 0 et 2:
+            possible = [0, 2, 3]
+            moins whos
+            liste des numéros à attribuer: dispo = [0, 2]
+        len(dispo) = TODO
+        """
+
+        done = [x for x in whos if x is not None]
+        dispo = [x for x in range(4) if x not in whos]
+
+        print("whos avec nearest:", whos, "TODO:", TODO, "done:", done, "dispo", dispo)
+
+        d = 0
+        while TODO > 0:
+            for i, who in enumerate(whos):
+                if who is None:
+                    whos[i] = dispo[d]
+                    TODO -= 1
+                    d += 1
+                    break
+
+        print("whos final:", whos)
+        return whos
+
+    def apply_to_personnages(self, skelet_3D):
         """ whos du type [1, 0, None, 2]
                                 1 attribué au perso 0
                                 0 attribué au perso 1 ... etc ...
         """
 
-        for i in range(self.person_nbr):
-
+        for i in range(4):
             # Data valide
             if self.whos[i] is not None:
                 self.personnages[i].who = self.whos[i]
-                self.personnages[i].xys = persos_2D[self.whos[i]]
-                self.personnages[i].points_3D = persos_3D[self.whos[i]]
-                c = get_center(persos_3D[self.whos[i]])
+                self.personnages[i].points_3D = skelet_3D[self.whos[i]]
+                c = get_center(skelet_3D[self.whos[i]])
                 self.personnages[i].center = c
-                self.personnages[i].add_historic(c)
+                self.personnages[i].last_update = self.nbr
+                self.personnages[i].stable += 1
+                if self.personnages[i].stable > 3:
+                    self.personnages[i].stable = 3
 
             # Pas de data sur cette frame
             else:
                 self.personnages[i].who = None
-                self.personnages[i].xys = None
                 self.personnages[i].points_3D = None
-                self.personnages[i].add_historic(self.personnages[i].center)
+                self.personnages[i].center = [100000]*2
+                self.personnages[i].stable -= 1
+
+        # Reset si pas d' attribution pendant 5 frames
+        for i in range(4):
+            if self.nbr - self.personnages[i].last_update > 4:
+                self.personnages[i].reset()
 
     def draw_all_personnages(self):
-
+        """Dessin des centres des personnages dans la vue de dessus,
+        représenté par un cercle
+        """
         self.black = np.zeros((720, 1280, 3), dtype = "uint8")
         cv2.line(self.black, (0, 360), (1280, 360), (255, 255, 255), 2)
         for i, perso in enumerate(self.personnages):
-            if perso.center and perso.center[0] and perso.center[2]:
+            if self.personnages[i].stable > 1:
+                if perso.center[0] != 100000 and perso.center[1] != 100000:
+                    x = 360 + int(perso.center[0]*160/1000)
+                    if x < 0: x = 0
+                    if x > 1280: x = 1280
+                    y = int(perso.center[1]*160/1000)
+                    if y < 0: y = 0
+                    if y > 720: y = 720
+                    cv2.circle(self.black, (y, x), 10, (100, 100, 100), -1)
+                    cv2.circle(self.black, (y, x), 12, COLORS[i], thickness=2)
 
-                x = 360 + int(perso.center[0]*160/1000)
-                if x < 0: x = 0
-                if x > 1280: x = 1280
-                y = int(perso.center[2]*160/1000)
-                if y < 0: y = 0
-                if y > 720: y = 720
-                self.draw_personnage(y, x, COLORS[i])
-
-    def draw_personnage(self, x, y, color):
-        cv2.circle(self.black, (x, y), 10, (100, 100, 100), -1)
-        cv2.circle(self.black, (x, y), 12, color=color, thickness=2)
-
-    def run(self, conn):
+    def run(self):
         """Boucle infinie, quitter avec Echap dans la fenêtre OpenCV"""
-
-        t0 = time()
-        nbr = 0
 
         while self.loop:
 
-            if nbr < len(self.json_data):
-                persos_2D = self.json_data[nbr][0]
-                persos_3D = self.json_data[nbr][1]
-                self.main_frame_test(persos_2D, persos_3D)
+            if self.nbr < len(self.json_data):
+                skelet_3D = self.json_data[self.nbr]
+                self.main_frame_test(skelet_3D)
             else:
                 os._exit(0)
 
             cv2.imshow('vue du dessus', self.black)
-            nbr += 1
+            self.nbr += 1
 
-            k = cv2.waitKey(100)
+            k = cv2.waitKey(50)
             if k == 27:  # Esc
                 break
 
@@ -299,26 +272,27 @@ def get_distance(p1, p2):
 
     if p1 and p2:
         if None not in p1 and None not in p2:
-            d = ((p1[0] - p2[0])**2 + (p1[2] - p2[2])**2)**0.5
+            d = ((p1[0] - p2[0])**2 + (p1[1] - p2[1])**2)**0.5
             return int(d)
     return 100000
 
 
 def get_center(points_3D):
     """Le centre est le centre de vue du dessus,
-        la verticale (donc le y) n'est pas prise en compte.
+    c'est la moyenne des coordonées des points du squelette d'un personnage,
+    sur x et z
     """
 
     center = []
     if points_3D:
-        for i in range(3):
+        for i in [0, 2]:
             center.append(get_moyenne(points_3D, i))
 
     return center
 
 
 def get_moyenne(points_3D, indice):
-    """Calcul la moyenne d'une coordonnée des points,
+    """Calcul la moyenne d'une coordonnée des points, d'un personnage
     la profondeur est le 3 ème = z, le y est la verticale
     indice = 0 pour x, 1 pour y, 2 pour z
     """
@@ -337,22 +311,8 @@ def get_moyenne(points_3D, indice):
     return moyenne
 
 
-def main():
-
-    ini_file = 'personnages3d.ini'
-    config_obj = MyConfig(ini_file)
-    config = config_obj.conf
-
-    # Création de l'objet
-    p3d = Personnages3D(**config)
-
-    # On tourne, silence, caméra, action !!!
-    conn = None
-    p3d.run(conn)
-
-
 
 if __name__ == '__main__':
-    """Excécution de ce script en standalone"""
 
-    main()
+    p3d = Personnages3D()
+    p3d.run()
