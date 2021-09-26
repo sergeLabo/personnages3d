@@ -3,7 +3,6 @@
 
 ### Installation dans un venv
 
-
 ``` bash
 # Mise à jour de pip
 sudo apt install python3-pip
@@ -21,7 +20,7 @@ source mon_env/bin/activate
 python3 -m pip install -r requirements.txt
 ```
 
-Ca installe numpy et opencv dans le dossier mon_env de recherche, avec les dépendances.
+Ca installe un lien vers python du système, numpy et opencv dans le dossier mon_env de recherche, avec les dépendances.
 
 ### Recherche
 
@@ -42,12 +41,19 @@ Ce script doit fonctionner, si ce n'est pas le cas, abandonnez.
 
 La détection des squelettes des personnes dans l'image de la caméra se traduit par une liste de squelette, dans un ordre au hazard. Cette liste est rarement dans le même ordre.
 
-Par exemple, si 3 personnes captées, il peut y avoir une liste de 0, 1, 2, 3 voire 4 suelettes (des faux faux), cette liste est le résultat du calcul tensoriel. N'ayez pas peur des mots compliqués, je les place pour épater le quidam !
+Par exemple, si 3 personnes captées, il peut y avoir une liste de 0, 1, 2, 3 voire 4 suelettes (des faux faux), cette liste est le résultat d'un calcul tensoriel. N'ayez pas peur des mots compliqués, je les place pour épater le quidam !
 
 Objectif:
-Appliquer un squelette à la même personne, cela se traduit par une couleur constante dans la vue de dessus. Par exemple, la personne rouge doit toujours rester rouge pendant ses déplacements
+Appliquer un squelette à la même personne, cela se traduit par une couleur constante dans la vue de dessus. Par exemple, la personne rouge doit toujours rester rouge pendant ses déplacements.
 
 ### Quelques explications sur le script
 
-* Utilise le json défini en ligne 11
+* Utilise le json défini dans if __name__ == '__main__':
 * La tempo de défilement des frames est réglable dans run() avec cv2.waitKey(tempo) tempo en ms
+* Problèmes connus:
+    * si le nombre de squelettes détectés est supérieur à 4, c'est non testé !
+* Lorsque les squelettes se croisent, lorsque quelqu'un sort du champ, ça marche mal.
+
+### Des idées en l'air
+* Plutot que de créer un historique, il faudrait deviner la suite des points probable
+* Faire un recherche avec une distance de plus en plus grande.

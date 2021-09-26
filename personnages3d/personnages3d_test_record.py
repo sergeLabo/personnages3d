@@ -636,6 +636,9 @@ class Personnages3D:
                     self.full_screen = 1
                 self.set_window()
 
+            elif k == 112:
+                print("reset")
+                self.all_data = []
             # Pour quitter
             elif k == 27:  # Esc
                 break

@@ -8,8 +8,6 @@ Installation: voir le readme
 
 """
 
-FICHIER = './json/cap_1.json'
-
 import os
 import json
 from time import time, sleep
@@ -43,11 +41,11 @@ class Personnage:
 
 class Personnages3D:
 
-    def __init__(self):
+    def __init__(self, FICHIER):
         """Unité = mm"""
 
         # Distance de rémanence pour attribution des squelettes
-        self.distance = 200
+        self.distance = 500
 
         self.json_data = read_json(FICHIER)
 
@@ -241,16 +239,15 @@ class Personnages3D:
                 skelet_3D = self.json_data[self.nbr]
                 self.main_frame_test(skelet_3D)
             else:
-                os._exit(0)
+                self.loop = 0
 
             cv2.imshow('vue du dessus', self.black)
             self.nbr += 1
 
-            k = cv2.waitKey(50)
+            k = cv2.waitKey(300)
             if k == 27:  # Esc
                 break
 
-        # Du OpenCV propre
         cv2.destroyAllWindows()
 
 
@@ -314,5 +311,13 @@ def get_moyenne(points_3D, indice):
 
 if __name__ == '__main__':
 
-    p3d = Personnages3D()
+    # # for i in range(8):
+
+        # # FICHIER = './json/cap_' + str(i) + '.json'
+
+        # # p3d = Personnages3D(FICHIER)
+        # # p3d.run()
+
+    FICHIER = './json/cap_7.json'
+    p3d = Personnages3D(FICHIER)
     p3d.run()
