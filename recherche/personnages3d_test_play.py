@@ -216,19 +216,19 @@ class Personnages3D:
         """Dessin des centres des personnages dans la vue de dessus,
         représenté par un cercle
         """
-        self.black = np.zeros((720, 1280, 3), dtype = "uint8")
+        # # self.black = np.zeros((720, 1280, 3), dtype = "uint8")
         cv2.line(self.black, (0, 360), (1280, 360), (255, 255, 255), 2)
         for i, perso in enumerate(self.personnages):
             if self.personnages[i].stable > 1:
                 if perso.center[0] != 100000 and perso.center[1] != 100000:
                     x = 360 + int(perso.center[0]*160/1000)
-                    if x < 0: x = 0
-                    if x > 1280: x = 1280
+                    # # if x < 0: x = 0
+                    # # if x > 1280: x = 1280
                     y = int(perso.center[1]*160/1000)
-                    if y < 0: y = 0
-                    if y > 720: y = 720
-                    cv2.circle(self.black, (y, x), 10, (100, 100, 100), -1)
-                    cv2.circle(self.black, (y, x), 12, COLORS[i], thickness=2)
+                    # # if y < 0: y = 0
+                    # # if y > 720: y = 720
+                    cv2.circle(self.black, (y, x), 4, (100, 100, 100), -1)
+                    cv2.circle(self.black, (y, x), 6, COLORS[i], thickness=2)
 
     def run(self):
         """Boucle infinie, quitter avec Echap dans la fenêtre OpenCV"""
@@ -244,7 +244,7 @@ class Personnages3D:
             cv2.imshow('vue du dessus', self.black)
             self.nbr += 1
 
-            k = cv2.waitKey(300)
+            k = cv2.waitKey(76)
             if k == 27:  # Esc
                 break
 
