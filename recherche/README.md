@@ -16,6 +16,8 @@ cd /le/dossier/de/personnages3d/recherche
 python3 -m venv mon_env
 # Activation
 source mon_env/bin/activate
+# Upgrade pip if needed
+python3 -m pip install --upgrade pip
 # Installation des packages
 python3 -m pip install -r requirements.txt
 ```

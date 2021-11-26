@@ -1,2 +1,5 @@
 numpy
 opencv-python
+filterpy == 1.4.4
+
+pytest

@@ -6,7 +6,6 @@ Echap pour finir proprement le script
 Capture de 1 à 4 squelettes
 avec
 camera Intel RealSense D455, Google posenet et Google Coral.
-Envoi de toutes les coordonnées de tous les points en OSC.
 """
 
 
@@ -14,6 +13,8 @@ import os
 from time import time, sleep
 from threading import Thread
 import json
+import enum
+
 
 import numpy as np
 import cv2
@@ -27,6 +28,29 @@ from post_capture import PostCaptureProcessing
 
 
 COLORS = [(0, 0, 255), (0, 255, 0), (255, 255, 0), (255, 0, 255)]
+
+
+
+class KeypointType(enum.IntEnum):
+    """Pose kepoints."""
+    NOSE = 0
+    LEFT_EYE = 1
+    RIGHT_EYE = 2
+    LEFT_EAR = 3
+    RIGHT_EAR = 4
+    LEFT_SHOULDER = 5
+    RIGHT_SHOULDER = 6
+    LEFT_ELBOW = 7
+    RIGHT_ELBOW = 8
+    LEFT_WRIST = 9
+    RIGHT_WRIST = 10
+    LEFT_HIP = 11
+    RIGHT_HIP = 12
+    LEFT_KNEE = 13
+    RIGHT_KNEE = 14
+    LEFT_ANKLE = 15
+    RIGHT_ANKLE = 16
+
 
 
 class PoseNetConversion:
@@ -74,7 +98,8 @@ class PoseNetConversion:
 
     def get_points_2D(self, pose):
         """ ma norme = dict{index du keypoint: (x, y), }
-        xys = {0: (698, 320), 1: (698, 297), 2: (675, 295), .... } """
+        xys = {0: (698, 320), 1: (698, 297), 2: (675, 295), .... }
+        """
 
         xys = {}
         for label, keypoint in pose.keypoints.items():
@@ -88,8 +113,6 @@ class PoseNetConversion:
 class Personnage:
     """Permet de stocker facilement les attributs d'un personnage,
     et de les reset-er.
-    Utilise une pile avec fitre EMA pour lisser les centres.
-    Moyenne simple des centres.
     """
 
     def __init__(self, **kwargs):
@@ -130,6 +153,9 @@ class Personnages3D:
         dans PostCaptureProcessing.
         La profondeur est le 3ème dans les coordonnées d'un point 3D,
         x = horizontale, y = verticale
+        points_3D = liste de 17 articulations, soit [x,y,z], soit None
+        colors = liste de 17 valeurs de couleurs, [127,127,127], soit None
+        mode de l'image à trouver !!!!!!!!!!!! BGR ?
     """
 
     def __init__(self, **kwargs):
@@ -188,6 +214,9 @@ class Personnages3D:
         # GUI
         self.loop = 1
 
+        self.client = TcpClient3('192.168.1.223', 8000)
+
+
     def create_window(self):
 
         cv2.namedWindow('color', cv2.WND_PROP_FULLSCREEN)
@@ -209,6 +238,7 @@ class Personnages3D:
             cv2.setWindowProperty(  'vue du dessus',
                                     cv2.WND_PROP_FULLSCREEN,
                                     cv2.WINDOW_NORMAL)
+
     def set_pipeline(self):
         """Crée le flux d'image avec la caméra D455
 
@@ -255,15 +285,15 @@ class Personnages3D:
         print(f"Taille des images:"
               f"     {img.shape[1]}x{img.shape[0]}")
 
-    def get_body_in_center(self, persos_3D):
+    def get_body_in_center(self, skelets_3D):
         """Recherche du perso le plus près du centre, pour 1 seul perso"""
 
         who = []
         # Tous les décalage sur x
         all_x_decal = []
 
-        if persos_3D:
-            for perso in persos_3D:
+        if skelets_3D:
+            for perso in skelets_3D:
                 # Le x est la 1ère valeur dans perso
                 if perso:
                     decal = get_moyenne(perso, 0)
@@ -284,38 +314,37 @@ class Personnages3D:
                 Récupération de tous les squelettes
                 Definition de who
         """
-        persos_2D, persos_3D = None, None
+        skelets_2D, skelets_3D = None, None
         # Récupération de tous les squelettes
         if outputs:
             # les xys
-            persos_2D = PoseNetConversion(outputs, self.threshold).skeletons
+            skelets_2D = PoseNetConversion(outputs, self.threshold).skeletons
 
-            if persos_2D:
+            if skelets_2D:
                 # Ajout de la profondeur pour 3D
-                persos_3D = self.get_persos_3D(persos_2D)
-
+                skelets_3D = self.get_skelets_3D(skelets_2D)
 
         # Récup de who, apply to self.perso
-        if persos_3D:
-            self.skelet_nbr = min(len(persos_3D), 4)
+        if skelets_3D:
+            self.skelet_nbr = min(len(skelets_3D), 4)
 
             # Si détection que d'un seul perso
             if self.person_nbr == 1:
-                self.whos = self.get_body_in_center(persos_3D)
+                self.whos = self.get_body_in_center(skelets_3D)
             else:
-                self.who_is_who(persos_3D)
+                self.who_is_who(skelets_3D)
 
             if self.stability_on:
-                self.apply_to_personnages_with_stability(persos_2D, persos_3D)
+                self.apply_to_personnages_with_stability(skelets_2D, skelets_3D)
             else:
-                self.apply_to_personnages(persos_2D, persos_3D)
+                self.apply_to_personnages(skelets_2D, skelets_3D)
 
             # Affichage
             self.draw_all_poses()
             self.draw_all_textes()
             self.draw_all_personnages()
 
-    def update_centers(self, persos_3D):
+    def update_centers(self, skelets_3D):
         """
         last_centers = liste des centres tirée de l'historique des piles de centre
         self.new_centers = liste des centres des squelettes de la frame
@@ -327,12 +356,12 @@ class Personnages3D:
 
         self.new_centers = []
         for i in range(self.skelet_nbr):
-            self.new_centers.append(get_center(persos_3D[i]))
+            self.new_centers.append(get_center(skelets_3D[i]))
 
-    def who_is_who(self, persos_3D):
+    def who_is_who(self, skelets_3D):
 
         # Préliminaire
-        self.update_centers(persos_3D)
+        self.update_centers(skelets_3D)
         print("\nNombre de squelette  ------------------------>", self.skelet_nbr)
 
         # Parcours des squelettes pour calculer les distances par rapport
@@ -425,7 +454,7 @@ class Personnages3D:
 
         return whos, TODO
 
-    def apply_to_personnages_with_stability(self, persos_2D, persos_3D):
+    def apply_to_personnages_with_stability(self, skelets_2D, skelets_3D):
         """
         Dans perso.histo, affichage de perso si les 3 derniers sont valides
             soit pas de 100000 dans les 3 derniers, 3 = stability
@@ -439,9 +468,9 @@ class Personnages3D:
             if self.whos[i] is not None:
                 if self.personnages[i].stability == self.stability:
                     self.personnages[i].who = self.whos[i]
-                    self.personnages[i].xys = persos_2D[self.whos[i]]
-                    self.personnages[i].points_3D = persos_3D[self.whos[i]]
-                    c = get_center(persos_3D[self.whos[i]])
+                    self.personnages[i].xys = skelets_2D[self.whos[i]]
+                    self.personnages[i].points_3D = skelets_3D[self.whos[i]]
+                    c = get_center(skelets_3D[self.whos[i]])
                     self.personnages[i].center = c
                     self.personnages[i].add_historic(c)
                     self.personnages[i].stability += 1
@@ -463,7 +492,7 @@ class Personnages3D:
                     self.personnages[i].points_3D = None
                     self.personnages[i].add_historic(self.personnages[i].center)
 
-    def apply_to_personnages(self, persos_2D, persos_3D):
+    def apply_to_personnages(self, skelets_2D, skelets_3D):
         """ whos du type [1, 0, None, 2]
                                 1 attribué au perso 0
                                 0 attribué au perso 1 ... etc ...
@@ -474,9 +503,9 @@ class Personnages3D:
             # Data valide
             if self.whos[i] is not None:
                 self.personnages[i].who = self.whos[i]
-                self.personnages[i].xys = persos_2D[self.whos[i]]
-                self.personnages[i].points_3D = persos_3D[self.whos[i]]
-                c = get_center(persos_3D[self.whos[i]])
+                self.personnages[i].xys = skelets_2D[self.whos[i]]
+                self.personnages[i].points_3D = skelets_3D[self.whos[i]]
+                c = get_center(skelets_3D[self.whos[i]])
                 self.personnages[i].center = c
                 self.personnages[i].add_historic(c)
 
@@ -487,49 +516,61 @@ class Personnages3D:
                 self.personnages[i].points_3D = None
                 self.personnages[i].add_historic(self.personnages[i].center)
 
-    def get_persos_3D(self, persos_2D):
-        persos_3D = []
-        for xys in persos_2D:
+    def get_skelets_3D(self, skelets_2D):
+        skelets_3D = []
+        for xys in skelets_2D:
             # #print("xys", xys)
             pts = self.get_points_3D(xys)
             if pts:
-                persos_3D.append(pts)
-        return persos_3D
+                skelets_3D.append(pts)
+
+
+
+        return skelets_3D
 
     def get_points_3D(self, xys):
         """Calcul des coordonnées 3D dans un repère centré sur la caméra,
         avec le z = profondeur
         La profondeur est une moyenne de la profondeur des points autour,
         sauf les extrêmes, le plus petit et le plus gand.
+        points_3D est une liste de 17 items, soit (x,y,z), soit None
+        y est la verticale
+        z est la profondeur
         """
 
         points_3D = [None]*17
-        for key, val in xys.items():
-            if val:
+        colors = [None]*17
+        # Parcours des squelettes
+        for key, xy in xys.items():
+            x = xy[0]
+            y = xy[1]
+            if x and y:
                 # Calcul de la profondeur du point
-                profondeur = self.get_profondeur(val)
+                profondeur = self.get_profondeur(x, y)
                 if profondeur:
                     # Calcul les coordonnées 3D avec x et y coordonnées dans
                     # l'image et la profondeur du point
                     # Changement du nom de la fonction trop long
                     point_2D_to_3D = rs.rs2_deproject_pixel_to_point
                     point_with_deph = point_2D_to_3D(self.depth_intrinsic,
-                                                     [val[0], val[1]],  # x, y
+                                                     [x, y],
                                                      profondeur)
                     # Conversion des m en mm
                     points_3D[key] = [int(1000*x) for x in point_with_deph]
 
+        # Suppression des squelettes sans aucune articulation, possible lorsque
+        # toutes les articulations sont en dessus du seuil de confiance
         if points_3D == [None]*17:
             points_3D = None
+
         return points_3D
 
-    def get_profondeur(self, val):
+    def get_profondeur(self, x, y):
         """Calcul la moyenne des profondeurs des pixels auour du point considéré
         Filtre les absurdes et les trop loins
         """
         profondeur = None
         distances = []
-        x, y = val[0], val[1]
         # around = nombre de pixel autour du points
         x_min = max(x - self.around, 0)
         x_max = min(x + self.around, self.depth_frame.width)
@@ -737,6 +778,18 @@ class Personnages3D:
                 for i in range(len(self.personnages)):
                     self.personnages[i].stability = self.stability
             sleep(0.001)
+
+
+
+def get_teinte_average(all_colors):
+    """Calcul la moyenne des 3 couleurs
+        all_colors est comme color_data ??
+        retourne teinte moyenne
+    """
+    average = [[], [], []]
+    for i in range(3):
+        average[i] = get_moyenne(all_colors, i)
+    return average
 
 
 
